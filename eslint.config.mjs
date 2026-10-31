@@ -5,7 +5,7 @@ const config = [
   ...nextVitals,
   ...nextTs,
   {
-    ignores: [".next/**", ".next-verify/**", "node_modules/**", "playwright-report/**", "test-results/**", "next-env.d.ts", ".data/**"],
+    ignores: [".next/**", ".next-verify/**", "node_modules/**", "playwright-report/**", "test-results/**", "next-env.d.ts", ".data/**", "extension/dist/**"],
   },
 ];
 

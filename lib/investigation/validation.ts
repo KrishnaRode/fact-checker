@@ -1,5 +1,6 @@
 import type { Finding, InvestigationResult, ModelAssessment, Overall, Passage, SourceRecord, Verdict } from "@/lib/contracts";
 import { isVolatileClaim, neutralize, salientTerms, terms } from "@/lib/text";
+import { placeAliases } from "./topics";
 import { passageMatchesSource } from "./passages";
 
 /**
@@ -83,7 +84,9 @@ export function mismatchedSpecifics(claim: string, passageTexts: string[]): stri
     if (/^\d/.test(entity)) continue;
     const parts = terms(entity).filter((t) => t.length > 2);
     // Multi-word names need their distinctive words present; one-word names must appear.
-    if (parts.length && !parts.some((t) => passageTerms.has(t))) missing.push(entity);
+    // A city also counts when the passage names one of its localities or old names.
+    const aliases = placeAliases(entity).flatMap((a) => terms(a));
+    if (parts.length && !parts.some((t) => passageTerms.has(t)) && !aliases.some((t) => passageTerms.has(t))) missing.push(entity);
   }
   return [...new Set(missing)];
 }

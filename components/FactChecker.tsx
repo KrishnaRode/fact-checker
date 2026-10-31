@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { appConfig, seriesLabel } from "@/app.config";
 import type { Depth, HealthReport, Mode } from "@/lib/contracts";
@@ -32,7 +33,9 @@ function Logo() {
 
 export function FactChecker() {
   const [state, dispatch] = useReducer(runReducer, initialRunState);
-  const [draft, setDraft] = useState("");
+  // A claim handed over by the browser extension (?q=…) pre-fills the composer.
+  const searchParams = useSearchParams();
+  const [draft, setDraft] = useState(() => (searchParams.get("q") ?? "").slice(0, appConfig.maxInputChars));
   const [mode, changeMode] = useStoredMode();
   const [health, setHealth] = useState<HealthReport | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);

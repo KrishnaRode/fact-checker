@@ -45,6 +45,7 @@
     ".next",
     ".next-verify",
     "playwright-report",
-    "test-results"
+    "test-results",
+    "extension/dist"
   ]
 }

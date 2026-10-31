@@ -32,6 +32,12 @@ export const appConfig = {
   maxInputChars: 12_000,
   maxFollowUpChars: 1_000,
   userAgent: "FactChecker/0.1 (local research tool; The Sunday Builds; +https://ollama.com)",
+  /**
+   * The companion Chrome extension (extension/) — its ID is fixed by the public key in
+   * extension/static/manifest.json. Only these extension origins may call the local API.
+   * Add more (e.g. a Web Store build) with FACTCHECK_EXTENSION_ORIGINS, comma-separated.
+   */
+  extensionOrigins: ["chrome-extension://jkccdjdinghdfoampelfceigjgkbkdfi"],
 } as const;
 
 /** Work budgets. Initial values, tuned against measurements in BENCHMARKS.md. */

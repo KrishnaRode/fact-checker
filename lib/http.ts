@@ -1,4 +1,11 @@
 import "server-only";
+import { appConfig } from "@/app.config";
+
+function allowedExtension(origin: string | null): boolean {
+  if (!origin?.startsWith("chrome-extension://")) return false;
+  const extra = (process.env.FACTCHECK_EXTENSION_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return [...appConfig.extensionOrigins, ...extra].includes(origin);
+}
 
 /**
  * This is a no-auth local app: it must not become an open proxy or accept cross-site
@@ -6,6 +13,12 @@ import "server-only";
  * browsers' Sec-Fetch-Site "cross-site" is rejected.
  */
 export function rejectCrossOrigin(req: Request): Response | null {
+  const origin0 = req.headers.get("origin");
+  // The companion extension (exact, configured ID only) may call the local API.
+  if (allowedExtension(origin0)) {
+    if (req.method === "POST" && !(req.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) return json({ code: "unsupported_media_type", message: "Send JSON." }, 415);
+    return null;
+  }
   const site = req.headers.get("sec-fetch-site");
   if (site && site !== "same-origin" && site !== "none") return json({ code: "forbidden", message: "Cross-site requests are not allowed." }, 403);
   const origin = req.headers.get("origin");

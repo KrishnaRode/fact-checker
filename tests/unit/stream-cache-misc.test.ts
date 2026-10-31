@@ -269,3 +269,13 @@ describe("keyword routing to topical feeds", () => {
     expect(r.ids.length).toBeLessThanOrEqual(6);
   });
 });
+
+describe("companion extension access", () => {
+  it("allows only the configured extension origin", async () => {
+    const { rejectCrossOrigin } = await import("@/lib/http");
+    const mk = (origin: string) => new Request("http://127.0.0.1:3016/api/investigate", { method: "POST", headers: { origin, "content-type": "application/json", host: "127.0.0.1:3016", "sec-fetch-site": "cross-site" } });
+    expect(rejectCrossOrigin(mk("chrome-extension://jkccdjdinghdfoampelfceigjgkbkdfi"))).toBeNull();
+    expect(rejectCrossOrigin(mk("chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))!.status).toBe(403);
+    expect(rejectCrossOrigin(mk("https://evil.example"))!.status).toBe(403);
+  });
+});

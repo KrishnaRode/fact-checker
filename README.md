@@ -37,6 +37,16 @@ npm run build && npm start        # or: npm run dev
 
 There is no Docker, login or cloud account.
 
+## Chrome extension
+
+Right-click any text on any page → **Fact-check**. The extension has two modes:
+- **AI · local:** used when this app is running.
+- **Evidence-only · no AI:** used otherwise. It runs fixed rules over public news, with
+  separate, more careful labels.
+
+Build it with `npm run build:extension`, then *Load unpacked* `extension/dist` in
+`chrome://extensions`. Details: [extension/README.md](extension/README.md).
+
 ## Local inference vs online retrieval
 
 | | Where it runs |

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fact Checker</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><img src="icons/icon-48.png" alt="" width="22" height="22" /><span>Fact Checker</span></div>
+    <button id="mode" class="chip" type="button" aria-haspopup="dialog" title="How this check runs"><span class="dot"></span><span id="mode-label">Checking…</span></button>
+  </header>
+
+  <main>
+    <h1 class="hero">Before you believe it.</h1>
+    <form id="form">
+      <label for="claim" class="sr-only">Claim to check</label>
+      <textarea id="claim" rows="5" placeholder="Select text on any page and right-click → Fact-check, or paste a claim here…"></textarea>
+      <div class="row">
+        <span id="hint" class="hint">Enter to investigate · Shift+Enter new line</span>
+        <button id="go" class="primary" type="submit">Investigate</button>
+        <button id="stop" class="secondary" type="button" hidden>Stop</button>
+      </div>
+    </form>
+    <p id="progress" class="progress" role="status" aria-live="polite"></p>
+    <section id="result" class="result" hidden aria-live="polite"></section>
+  </main>
+
+  <dialog id="settings" aria-labelledby="settings-title">
+    <form method="dialog">
+      <h2 id="settings-title">How checks run</h2>
+      <p id="mode-explain" class="muted"></p>
+      <label class="field">Fact Checker app address
+        <input id="app-url" type="url" placeholder="http://127.0.0.1:3016" />
+      </label>
+      <label class="check"><input id="force-rules" type="checkbox" /> Always use evidence-only mode (no AI)</label>
+      <p class="muted small">AI mode sends your claim only to the Fact Checker app on this computer, which runs a local model. Evidence-only mode fetches public news feeds and articles directly from your browser — no AI, no account. Nothing is stored except a 20-minute feed cache.</p>
+      <div class="row end"><button id="recheck" class="secondary" type="button">Re-check connection</button><button class="primary" value="close">Done</button></div>
+    </form>
+  </dialog>
+  <script src="sidepanel.js" type="module"></script>
+</body>
+</html>

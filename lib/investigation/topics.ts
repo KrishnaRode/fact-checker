@@ -40,6 +40,15 @@ for (const [city, state, aliases] of [
   for (const a of aliases.split(" ")) CITIES[a.replace(/-/g, " ")] = { city, state };
 }
 
+/** All names that refer to the same city (e.g. pune → pune, poona, wakad, hinjewadi…). */
+export function placeAliases(name: string): string[] {
+  const hit = CITIES[name.toLowerCase()];
+  if (!hit) return [];
+  return Object.entries(CITIES)
+    .filter(([, v]) => v.city === hit.city)
+    .map(([alias]) => alias);
+}
+
 const STATES: Record<string, string> = {};
 for (const [state, aliases] of [
   ["maharashtra", "maharashtra"],

@@ -112,6 +112,10 @@ describe("validateAssessment", () => {
     expect(support("A woman and her son jumped from the 25th floor of a building in Mumbai.").verdict).toBe("unresolved");
     expect(support("A woman and her son jumped from the 25th floor of a building in Mumbai.").validationNotes.join(" ")).toMatch(/25th.*Mumbai|Mumbai.*25th/);
     expect(support("A woman and her 6-year-old son died after jumping from the 18th floor of a building in Pune.").verdict).toBe("supported");
+    // A locality of the city counts as the city (Wakad is in Pune).
+    const wakad = "A woman and her six-year-old son died after jumping from the 18th floor of a housing society in Wakad.";
+    const r = validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), { ...base, claims: ["A woman and her son died after jumping from the 18th floor of a building in Pune."], passages: [passage("P1", "S1", wakad)] });
+    expect(r.findings[0]!.verdict).toBe("supported");
   });
 
   it("does not let 'relief' or 'bail' stand in for 'acquitted, all cases dropped'", () => {
