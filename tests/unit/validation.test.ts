@@ -105,6 +105,13 @@ describe("validateAssessment", () => {
     expect(validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), pune).findings[0]!.verdict).toBe("supported");
   });
 
+  it("downgrades a 'supported' label when the cited passage says the opposite", () => {
+    const ctx = { ...base, claims: ["The Riverbend Museum has shut down permanently."], passages: [passage("P1", "S1", "This is a temporary closure for maintenance. The Riverbend Museum is not closing permanently.")] };
+    const { findings } = validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), ctx);
+    expect(findings[0]!.verdict).toBe("unresolved");
+    expect(findings[0]!.validationNotes.join(" ")).toMatch(/opposite.*permanently/);
+  });
+
   it("requires numbers and named places to match exactly", () => {
     const pune = "A woman and her six-year-old son died after jumping from the 18th floor of a building in Pune's Wakad.";
     const support = (claim: string) =>

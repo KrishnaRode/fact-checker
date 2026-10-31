@@ -122,6 +122,29 @@ The score is computed after validation, from the decisive eligible passages:
 A score of ≥ 3 is **strong**, 2 is **moderate**, and ≤ 1 is **thin**. The result is shown with
 its reasons. Social posts count as mentions only.
 
+## Opposites ([`opposites.ts`](lib/investigation/opposites.ts))
+
+A deterministic contrast detector shared by both modes.
+
+**Inputs:** the claim, and sentences from the relevant passages.
+
+**It flags:**
+- (a) a claim word negated in the report;
+- (b) a claim word absent while its listed antonym is present: permanent/temporary, open/closed,
+  dangerous/below limit, rose/fell, won/lost, convicted/acquitted, approved/rejected,
+  banned/lifted, died/survived, cancelled/went ahead;
+- (c) "free" against a stated price. This one is a caution only.
+
+**Where it's used:**
+- In AI mode it downgrades a model's "supported" whose citations say the opposite.
+- In the extension's no-AI mode it produces **Reports say the opposite**.
+
+**Measured on the demo corpus:**
+- Before: the no-AI rules labelled 3 false claims "Matches" (permanent closure, free entry,
+  dangerous lead).
+- After: 6/6 demo cases come out as a careful reader would label them (regression test in
+  `tests/unit/extension-rules.test.ts`).
+
 ## Social leads ([`mastodon.ts`](lib/providers/mastodon.ts))
 
 - Mastodon public hashtag timelines, using hashtags from the routed keywords.

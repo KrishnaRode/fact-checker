@@ -192,7 +192,9 @@ function renderRules(r: RuleResult & { detected: string; elapsedMs: number }, cl
   const map = (xs: RuleEvidence[]) => xs.map((x) => ({ publisher: x.publisher, title: x.title, url: x.url, date: x.publishedAt, text: x.passage, detail: x.detail }));
   for (const node of [
     evidenceList("Published fact-checks", "contradicted", map(r.factChecks)),
-    evidenceList("Matching reports", "supported", map(r.matches)),
+    evidenceList("Reports saying the opposite", "contradicted", map(r.opposites)),
+    evidenceList("Reports with the same details", "supported", map(r.matches)),
+    evidenceList("Same topic — read carefully", "unresolved", map(r.cautions)),
     evidenceList("Reports mentioning a denial", "unresolved", map(r.denials)),
     evidenceList("Reports that differ on details", "unresolved", map(r.differs)),
   ])

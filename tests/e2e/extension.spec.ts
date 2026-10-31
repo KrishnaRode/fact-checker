@@ -57,7 +57,7 @@ test("falls back to evidence-only mode without the app, and decides by rules", a
   await page.keyboard.press("Enter");
   await expect(page.locator("#result")).toBeVisible({ timeout: 90_000 });
   await expect(page.locator("#result")).toContainText("Evidence-only mode · no AI");
-  await expect(page.locator("#result .label")).toContainText(/Matches independent reports|Reports differ on details|Reports mention a denial|Reports conflict|fact-checker disputes|No matching coverage found/);
+  await expect(page.locator("#result .label")).toContainText(/Same details in independent reports|Reports say the opposite|Same topic — read carefully|Reports differ on details|Reports mention a denial|Reports conflict|fact-checker disputes|No matching coverage found/);
   await expect(page.locator("#result")).toContainText("Keywords: Mumbai");
 });
 

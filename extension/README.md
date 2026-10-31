@@ -8,7 +8,7 @@ Right-click any text → **Fact-check "…"**. The side panel checks it against 
 |---|---|---|
 | When | The Fact Checker app is running (`./run.sh`) with its model | Otherwise, or if you choose it in the panel |
 | Who decides | The app's full pipeline + local Ollama model + validators | Fixed rules in the extension |
-| Labels | Supported / Contradicted / Misleading / Not enough evidence / … with evidence strength | Matches independent reports / Reports differ on details / Reports mention a denial / Reports conflict / A fact-checker disputes a similar claim / No matching coverage found |
+| Labels | Supported / Contradicted / Misleading / Not enough evidence / … with evidence strength | Same details in independent reports / Reports say the opposite / Same topic — read carefully / Reports differ on details / Reports mention a denial / Reports conflict / A fact-checker disputes a similar claim / No matching coverage found |
 | Your claim goes to | Only the app on this computer (`127.0.0.1`) | Nowhere. The extension downloads public news feeds and articles to compare locally |
 
 Evidence-only mode reuses the app's own checks:
@@ -20,8 +20,16 @@ Evidence-only mode reuses the app's own checks:
 - denial wording;
 - published fact-checks (Alt News, FactCheck.org).
 
-Rules compare words, numbers, places and outcomes; they cannot read for meaning, so they never
-say "true" or "false". If a matching report can't be read, it searches for the same story
+They also detect **opposites**:
+- negation: "*not* closing permanently";
+- listed antonym pairs: temporary ↔ permanent, below the limit ↔ dangerous, rose ↔ fell,
+  won ↔ lost, interim bail ↔ acquitted…;
+- a stated price against a claim of "free";
+- hedged wording ("some think it may…");
+- reports that are too old or undated for a "today" claim.
+
+Each of these names the conflicting words, so you can check it in seconds. Rules still cannot
+read for meaning, so they never say "true" or "false". If a matching report can't be read, it searches for the same story
 elsewhere. Missing coverage is never treated as falsehood.
 
 ## Install (developer mode)

@@ -1,6 +1,7 @@
 import type { Finding, InvestigationResult, ModelAssessment, Overall, Passage, SourceRecord, Verdict } from "@/lib/contracts";
 import { isVolatileClaim, neutralize, salientTerms, terms } from "@/lib/text";
 import { placeAliases } from "./topics";
+import { findOpposites, splitSentences } from "./opposites";
 import { passageMatchesSource } from "./passages";
 
 /**
@@ -188,6 +189,9 @@ export function validateAssessment(model: ModelAssessment, ctx: ValidationContex
               ? "The supporting citations were search snippets or feed summaries, not readable article text."
               : "The model proposed “supported” without citing a supporting passage.",
         );
+      } else if (findOpposites(ctx.claims[index]!, ok.flatMap((pid) => splitSentences(passages.get(pid)!.text))).some((o) => o.kind !== "price")) {
+        const o = findOpposites(ctx.claims[index]!, ok.flatMap((pid) => splitSentences(passages.get(pid)!.text))).find((x) => x.kind !== "price")!;
+        downgrade(`The cited passage says the opposite of the claim: the claim says “${o.claimWord}”, the passage says “${o.reportWords}”.`);
       } else if (mismatchedSpecifics(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text)).length) {
         downgrade(`Specific details in the claim (${mismatchedSpecifics(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text)).slice(0, 4).join(", ")}) do not appear in the supporting passages, so they may describe a different event or different facts.`);
       } else if (uncoveredClaimTerms(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text)).ratio < 0.6) {

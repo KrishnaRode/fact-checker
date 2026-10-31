@@ -21,6 +21,7 @@ describe("evidence-only rules (no AI)", () => {
   it("matches independent reports with the same names, numbers and places", () => {
     const r = decide("A woman and her 6-year-old son died after jumping from the 18th floor of a building in Pune.", [doc("Hindustan Times", PUNE), doc("Times of India", PUNE_2)]);
     expect(r.label).toBe("matches");
+    expect(r.title).toBe("Same details in independent reports");
     expect(r.independentOrigins).toBe(2);
   });
   it("reports differing details instead of matching a wrong number or city", () => {
@@ -62,5 +63,25 @@ describe("evidence-only rules (no AI)", () => {
       { title: "Pune woman, 6-year-old son die after jumping from 18th floor", summary: "", url: "https://x.example/2" },
     ];
     expect(rankItems("did a lady and child die by falling from a building in Pune", items, 5)).toEqual([1]);
+  });
+});
+
+describe("rules detect opposites (regression: demo corpus)", () => {
+  it("handles the four demo claims the way a careful reader would", async () => {
+    const corpus = (await import("@/fixtures/demo/corpus.json")).default;
+    const docs: Doc[] = corpus.documents.map((d) => ({ url: d.url, title: d.title, publisher: d.publisher, publishedAt: d.publishedAt, text: d.paragraphs.join("\n\n").replace(/<[^>]+>/g, ""), links: [], readable: true, note: null, isFactCheck: false }));
+    const closure = decide("BREAKING: The Riverbend Museum has shut down permanently from today! Share before they delete this!!", docs);
+    expect(closure.label).toBe("opposite");
+    expect(closure.opposites[0]!.detail).toMatch(/permanently/);
+    expect(decide("The Riverbend Museum reopens on Tuesday 3 November at 10 am.", docs).label).toBe("matches");
+    const free = decide("Entry to the Riverbend Museum will be free for everyone when it reopens.", docs);
+    expect(free.label).not.toBe("matches");
+    expect(["caution", "opposite", "conflict"]).toContain(free.label);
+    const old = decide("Harbor Line metro stations are shut today after heavy flooding.", docs, "2026-10-28");
+    expect(old.label).toBe("caution");
+    expect(old.cautions[0]!.detail).toMatch(/2019/);
+    const lead = decide("Kestrel Bay's tap water had dangerous lead levels last week.", docs);
+    expect(lead.label).toBe("opposite");
+    expect(lead.opposites[0]!.detail).toMatch(/below/);
   });
 });
