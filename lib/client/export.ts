@@ -36,6 +36,7 @@ export function toMarkdown(r: InvestigationResult): string {
   lines.push("", `## Submission`, "", ...r.originalInput.split("\n").map((l) => `> ${l}`), "", `## Summary`, "", r.summary, "");
   for (const f of r.findings) {
     lines.push(`## ${f.id}: ${VERDICT_VIEW[f.verdict].label}`, "", `**Claim:** ${f.claim}`, "", f.headline, "", f.explanation, "");
+    if (f.strength) lines.push(`**Evidence strength:** ${f.strength.level} — ${f.strength.reasons.join("; ")}`, "");
     const cite = (ids: string[], title: string) => {
       if (!ids.length) return;
       lines.push(`**${title}**`, "");

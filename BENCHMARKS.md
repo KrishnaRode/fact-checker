@@ -54,8 +54,11 @@ Mitigations added afterwards:
 - logging of any run that overshoots its budget, with its event timeline;
 - the benchmark now records the server's stated reason.
 
-Run B (9/9) did not reproduce it and logged no overshoots. **Treat this as open** until it
-holds across more runs.
+Run B (9/9) did not reproduce it. **Later diagnosis:** a live run took 88 s against a 30 s
+budget. The slow-run log showed the local-model call outliving the budget's abort signal.
+Deadlines now use plain controllers, and every slow step is raced against the run's abort. The
+next run with the same symptom stopped at 30 s and was correctly marked incomplete. This is the
+most likely cause of the 40-minute stall too; it hasn't been re-benchmarked at scale since.
 
 ² "Cold" = the model was unloaded (`keep_alive: 0`) before each run. Model load measured
 ~3 s (7.4 s total for a tiny prompt vs 3.8 s warm in an earlier probe). Under the swap pressure,

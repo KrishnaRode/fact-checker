@@ -2,7 +2,7 @@
 
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { appConfig } from "@/app.config";
+import { appConfig, seriesLabel } from "@/app.config";
 import type { Depth, HealthReport, Mode } from "@/lib/contracts";
 import { getHealth, HttpError, streamInvestigation } from "@/lib/client/api";
 import { useStoredMode } from "@/lib/client/hooks";
@@ -116,9 +116,9 @@ export function FactChecker() {
         <button type="button" onClick={newInvestigation} className="flex min-w-0 items-center gap-2.5 rounded-lg" aria-label={`${appConfig.name} — start a new investigation`}>
           <Logo />
           <span className="text-[16px] font-semibold tracking-tight text-text">{appConfig.name}</span>
-          <span className="hidden rounded-full border border-border px-2 py-0.5 text-[11.5px] text-text-faint sm:inline">{appConfig.series}</span>
+          <span className="hidden rounded-full border border-border px-2 py-0.5 text-[11.5px] text-text-faint sm:inline">{seriesLabel}</span>
         </button>
-        <ConnectionStatus health={health} mode={idle ? mode : runMode} onOpen={() => setSettingsOpen(true)} />
+        <ConnectionStatus health={health} mode={mode} onOpen={() => setSettingsOpen(true)} />
       </header>
 
       <main className="flex flex-1 flex-col">
@@ -220,6 +220,10 @@ export function FactChecker() {
                     onRefresh={() => run(state.input, { mode: state.mode, depth: state.depth, refresh: true })}
                     onDeeper={() => run(state.input, { mode: state.mode, depth: "deep", baseRunId: result.id })}
                     onEdit={editClaim}
+                    onCheckLive={() => {
+                      changeMode("live");
+                      void run(state.input, { mode: "live" });
+                    }}
                   />
                   {state.activity.length > 0 && <InvestigationStream state={state} collapsed />}
                 </div>
@@ -249,13 +253,23 @@ export function FactChecker() {
 
       <footer className="flex flex-col items-center justify-between gap-1 border-t border-border/60 py-5 text-[12.5px] text-text-faint sm:flex-row">
         <span>
-          {appConfig.series} · {appConfig.seriesLine}
+          {seriesLabel} · {appConfig.seriesLine}
         </span>
         <span>Built by {appConfig.owner} · local AI via Ollama</span>
       </footer>
 
       {result && <EvidenceInspector result={result} selection={selection} onClose={() => setSelection(null)} onSelect={setSelection} />}
-      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} health={health} onRefreshHealth={refreshHealth} mode={idle ? mode : runMode} onModeChange={changeMode} />
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} health={health} onRefreshHealth={refreshHealth} mode={mode}
+        onModeChange={changeMode}
+        recheck={
+          !idle && !running && state.input && runMode !== mode
+            ? () => {
+                setSettingsOpen(false);
+                void run(state.input, { mode });
+              }
+            : null
+        }
+      />
     </div>
   );
 }

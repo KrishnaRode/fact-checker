@@ -108,6 +108,10 @@ describe("claim planning", () => {
     expect(looksUncheckable("Kestrel Bay will be the best city in the world by 2040.")).toBe(true);
     expect(looksUncheckable("Entry will be free for everyone when it reopens.")).toBe(false);
     expect(looksUncheckable("The museum will reopen on 3 November.")).toBe(false);
+    expect(looksUncheckable("The BJP will win the 2027 Uttar Pradesh assembly election.", 2026)).toBe(true);
+    expect(looksUncheckable("Congress is set to form the government in Karnataka.")).toBe(true);
+    expect(looksUncheckable("The metro line will open in 2028.", 2026)).toBe(true);
+    expect(looksUncheckable("The BJP won the 2024 Lok Sabha election.", 2026)).toBe(false);
   });
   it("sanitises search queries and recognises URLs", () => {
     expect(sanitizeQuery("FAKE!!! <script> museum closed hoax")).toBe("script museum closed");
@@ -194,12 +198,12 @@ function fakeResult(over: Partial<InvestigationResult> = {}): InvestigationResul
     inputKind: "text",
     overall: "contradicted",
     summary: "It is a temporary closure.",
-    findings: [{ id: "C1", claim: "The museum closed permanently.", verdict: "contradicted", headline: "Temporary.", explanation: "See [P1].", supportingPassageIds: [], contradictingPassageIds: ["P1"], contextPassageIds: [], limitations: [], missingEvidence: [], validationNotes: [], modelProposedVerdict: null }],
+    findings: [{ id: "C1", claim: "The museum closed permanently.", verdict: "contradicted", headline: "Temporary.", explanation: "See [P1].", supportingPassageIds: [], contradictingPassageIds: ["P1"], contextPassageIds: [], limitations: [], missingEvidence: [], validationNotes: [], modelProposedVerdict: null, strength: null }],
     uncheckedClaims: [],
     assumptions: [],
     sources: [source("S1")],
     passages: [passage("P1", "S1", "This is a temporary closure.")],
-    coverage: { scope: "selected_sources", providersAttempted: ["demo_corpus"], providersSucceeded: ["demo_corpus"], warnings: [] },
+    coverage: { scope: "selected_sources", providersAttempted: ["demo_corpus"], providersSucceeded: ["demo_corpus"], warnings: [], routing: { detected: "", feeds: [] } },
     graph: { nodes: [], edges: [] },
     model: "qwen3:4b",
     timing: { totalMs: 1, retrievalMs: 1, inferenceMs: 1, firstEvidenceMs: 1, modelWarm: true, llmCalls: 1 },
@@ -234,5 +238,34 @@ describe("demo and live stay distinguishable", () => {
     expect(InvestigateRequestSchema.parse({ input: "x y z" }).mode).toBe("live");
     const big = InvestigateRequestSchema.safeParse({ input: "a".repeat(12_001) });
     expect(big.success).toBe(false);
+  });
+});
+
+describe("keyword routing to topical feeds", () => {
+  it("routes a Pune incident to Pune city feeds", async () => {
+    const { classifyClaim, routeFeeds } = await import("@/lib/investigation/topics");
+    const c = classifyClaim("did any lady and child died by fall from a building in Wakad, Pune");
+    expect(c.places[0]).toMatchObject({ name: "pune", kind: "city", state: "maharashtra" });
+    const r = routeFeeds(c, 6);
+    expect(r.ids).toEqual(expect.arrayContaining(["toi-pune", "ht-pune", "ie-pune"]));
+  });
+  it("detects topics including profession words, and routes them", async () => {
+    const { classifyClaim, routeFeeds } = await import("@/lib/investigation/topics");
+    expect(classifyClaim("Doctors at AIIMS warned about a dengue outbreak").topics[0]!.name).toBe("health");
+    expect(routeFeeds(classifyClaim("OpenAI launched a new ChatGPT app for Android"), 6).ids).toEqual(expect.arrayContaining(["ie-tech"]));
+    expect(classifyClaim("Clashes broke out near a temple during Navratri").topics.map((t) => t.name)).toContain("religion");
+    expect(classifyClaim("The BJP won the Bihar assembly election").topics.map((t) => t.name)).toContain("politics");
+    expect(routeFeeds(classifyClaim("RBI raised the repo rate and the Sensex fell"), 6).ids).toEqual(expect.arrayContaining(["ie-business"]));
+  });
+  it("does not mistake ordinary words for short abbreviations", async () => {
+    const { classifyClaim } = await import("@/lib/investigation/topics");
+    const c = classifyClaim("Prices went up in the market");
+    expect(c.places.some((p) => p.name === "uttar pradesh")).toBe(false);
+    expect(classifyClaim("Yogi's UP government announced a scheme").places.some((p) => p.name === "uttar pradesh")).toBe(true);
+  });
+  it("caps routed feeds and spreads them across publishers", async () => {
+    const { classifyClaim, routeFeeds } = await import("@/lib/investigation/topics");
+    const r = routeFeeds(classifyClaim("Mumbai police arrested a Pune cricket player over a stock market fraud"), 6);
+    expect(r.ids.length).toBeLessThanOrEqual(6);
   });
 });

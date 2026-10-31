@@ -76,7 +76,7 @@ export function EvidenceInspector({ result, selection, onClose, onSelect }: { re
           <figure className="mt-5">
             <blockquote className="rounded-2xl border border-border bg-bg-soft p-4 text-[15.5px] leading-relaxed text-text whitespace-pre-line">{passage.text}</blockquote>
             <figcaption className="mt-2 text-[12.5px] leading-relaxed text-text-faint">
-              Exact extracted text ({passage.retrievalKind === "article_body" ? "article body" : passage.retrievalKind === "feed_excerpt" ? "feed summary" : "search snippet"}), characters {passage.normalizedStart.toLocaleString()}–{passage.normalizedEnd.toLocaleString()} of the normalized page text.
+              Exact extracted text ({passage.retrievalKind === "article_body" ? "article body" : passage.retrievalKind === "feed_excerpt" ? "feed summary" : passage.retrievalKind === "social_post" ? "public social post" : "search snippet"}), characters {passage.normalizedStart.toLocaleString()}–{passage.normalizedEnd.toLocaleString()} of the normalized page text.
               {usage.length > 0 && <span className="block text-text-muted">Used as: {usage.join(", ")}.</span>}
               {passage.isQuotation && <span className="block">Mostly a quoted statement — it shows what was said, not that it is true.</span>}
             </figcaption>
@@ -106,7 +106,7 @@ export function EvidenceInspector({ result, selection, onClose, onSelect }: { re
             {source.accessNote && <span className="block text-text-faint">{source.accessNote}</span>}
           </dd>
           <dt className="text-text-faint">Found via</dt>
-          <dd className="text-text-muted">{source.provider === "demo_corpus" ? "Bundled demo corpus (fictional)" : source.provider === "user_url" ? "Your link" : source.provider}</dd>
+          <dd className="text-text-muted">{source.provider === "demo_corpus" ? "Bundled demo corpus (fictional)" : source.provider === "user_url" ? "Your link" : source.provider === "social_mastodon" ? "Mastodon public hashtag — social lead, low reliability, never counted as evidence" : source.provider === "social_link" ? "A news link shared on social media (the article itself was checked)" : source.provider}</dd>
           {source.revisionId && (
             <>
               <dt className="text-text-faint">Revision</dt>

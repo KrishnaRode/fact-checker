@@ -37,8 +37,9 @@ warn() { printf "\033[33m!\033[0m %s\n" "$1"; }
 err()  { printf "\033[31m✗ %s\033[0m\n" "$1" >&2; }
 ask()  { [[ -t 0 ]] || return 1; local a; read -r -p "$(printf "\033[35m?\033[0m %s [y/N] " "$1")" a || return 1; [[ "$a" =~ ^[Yy] ]]; }
 
+BUILD="$(grep -Eo 'buildNumber:[[:space:]]*[0-9]+' app.config.ts | grep -Eo '[0-9]+' || true)"
 bold "Fact Checker — Before you believe it."
-echo  "The Sunday Builds — Free AI. Real Problems. Every Sunday."
+echo  "The Sunday Builds${BUILD:+ #$BUILD} — Free AI. Real Problems. Every Sunday."
 echo
 
 # 1) Node.js + npm -------------------------------------------------------------

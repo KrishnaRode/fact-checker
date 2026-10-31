@@ -120,7 +120,15 @@ export async function chatStructured<S extends z.ZodType>(opts: {
     const started = Date.now();
     const left = deadline - started;
     if (left < 1_000) throw new OllamaError("timeout", "The local model was busy and the time budget ran out before it could start.");
-    const signal = AbortSignal.any([opts.signal, AbortSignal.timeout(left)]);
+    // A plain controller + timer (strong references) so the deadline is enforced even if the
+    // caller's signal chain misbehaves.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(new DOMException("Timed out", "TimeoutError")), left);
+    const onAbort = () => ctrl.abort();
+    if (opts.signal.aborted) ctrl.abort();
+    opts.signal.addEventListener("abort", onAbort, { once: true });
+    const signal = ctrl.signal;
+    try {
     let res: Response;
     try {
       res = await fetch(`${serverConfig.ollamaHost}/api/chat`, {
@@ -136,9 +144,9 @@ export async function chatStructured<S extends z.ZodType>(opts: {
           options: { temperature: 0.1, num_ctx: budgets.modelNumCtx, num_predict: opts.maxTokens ?? budgets.modelMaxOutputTokens },
         }),
       });
-    } catch (err) {
+    } catch {
       if (opts.signal.aborted) throw new OllamaError("aborted", "Cancelled.");
-      if ((err as Error)?.name === "TimeoutError" || signal.aborted) throw new OllamaError("timeout", "The local model did not finish within the time budget.");
+      if (signal.aborted) throw new OllamaError("timeout", "The local model did not finish within the time budget.");
       throw new OllamaError("offline", "Ollama is not running. Start Ollama and retry.");
     }
     if (res.status === 404) throw new OllamaError("model_missing", `The model ${model} is not installed. Run: ollama pull ${model}`);
@@ -174,5 +182,9 @@ export async function chatStructured<S extends z.ZodType>(opts: {
       promptTokens: body.prompt_eval_count ?? null,
       outputTokens: body.eval_count ?? null,
     };
+    } finally {
+      clearTimeout(timer);
+      opts.signal.removeEventListener("abort", onAbort);
+    }
   }, opts.signal);
 }

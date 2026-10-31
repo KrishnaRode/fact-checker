@@ -1,10 +1,10 @@
 "use client";
 
-import { AlertTriangle, Clock, Download, FileJson, Layers, Pencil, RefreshCw, RotateCcw, Telescope } from "lucide-react";
+import { AlertTriangle, Clock, Download, FileJson, Globe2, Layers, Pencil, RefreshCw, RotateCcw, Telescope } from "lucide-react";
 import type { InvestigationResult } from "@/lib/contracts";
 import { download, toExportJson, toMarkdown } from "@/lib/client/export";
 import { overallView } from "@/lib/client/verdicts";
-import { ClaimFindings, FindingDetail } from "./ClaimFindings";
+import { ClaimFindings, FindingDetail, StrengthMeter } from "./ClaimFindings";
 import { EvidenceMap, type Selection } from "./EvidenceMap";
 import { formatSeconds } from "./InvestigationStream";
 
@@ -29,6 +29,7 @@ export function AssessmentView({
   onRefresh,
   onDeeper,
   onEdit,
+  onCheckLive,
 }: {
   result: InvestigationResult;
   onInspect: (s: Selection) => void;
@@ -36,6 +37,7 @@ export function AssessmentView({
   onRefresh: () => void;
   onDeeper: () => void;
   onEdit: () => void;
+  onCheckLive: () => void;
 }) {
   const v = overallView(result);
   const single = result.findings.length === 1 && result.uncheckedClaims.length === 0 ? result.findings[0] : null;
@@ -44,8 +46,19 @@ export function AssessmentView({
   const inaccessible = result.sources.length - readable;
   const failedProviders = result.coverage.providersAttempted.filter((p) => !result.coverage.providersSucceeded.includes(p));
 
+  const demoMiss = result.mode === "demo" && result.passages.length === 0;
   return (
     <div className="space-y-8">
+      {demoMiss && (
+        <div role="note" className="flex flex-col gap-3 rounded-2xl border border-unresolved/40 bg-unresolved/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-[15px] leading-relaxed text-text">
+            You are in <span className="text-unresolved">Demo mode</span>, which only searches a small set of fictional Kestrel Bay documents — not the news.
+          </p>
+          <button type="button" onClick={onCheckLive} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-accent px-4 py-2 text-[14px] font-semibold text-bg hover:bg-accent-strong">
+            <Globe2 size={15} aria-hidden /> Check this live
+          </button>
+        </div>
+      )}
       {/* 1–2. Verdict label, one-sentence finding, short explanation */}
       <div>
         <p className={`tone-${v.tone} text-[13px] font-semibold uppercase tracking-[0.1em]`} style={{ color: "var(--tone)" }}>
@@ -62,6 +75,11 @@ export function AssessmentView({
                 <RotateCcw size={14} aria-hidden /> Retry
               </button>
             </div>
+          </div>
+        )}
+        {result.status === "complete" && single?.strength && (
+          <div className="mt-4">
+            <StrengthMeter strength={single.strength} />
           </div>
         )}
         {result.status === "complete" && <p className="mt-3 text-[14px] text-text-faint">{v.meaning}</p>}
@@ -119,6 +137,12 @@ export function AssessmentView({
           <p>
             {result.sources.length} source{result.sources.length === 1 ? "" : "s"} considered · {readable} read in full{inaccessible ? ` · ${inaccessible} not readable` : ""}
           </p>
+          {result.coverage.routing.detected && (
+            <p>
+              Keywords: <span className="text-text">{result.coverage.routing.detected}</span>
+              {result.coverage.routing.feeds.length > 0 && <> → also scanned {result.coverage.routing.feeds.join(", ")}</>}
+            </p>
+          )}
           <p>Answered: {result.coverage.providersSucceeded.map((p) => PROVIDER_NAMES[p] ?? p).join(", ") || "none"}{failedProviders.length ? ` · unavailable: ${failedProviders.map((p) => PROVIDER_NAMES[p] ?? p).join(", ")}` : ""}</p>
         </div>
         {result.coverage.warnings.length > 0 && (
@@ -170,9 +194,10 @@ export function AssessmentView({
                         <span className="block truncate text-text-muted">{s.title}</span>
                         <span className="text-[12.5px] text-text-faint">
                           {s.publisher ?? "Unknown"} · {s.publishedAt ? new Date(s.publishedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "date unknown"}
-                          {s.access !== "full_text" && <span className="text-unresolved"> · {s.access === "snippet_only" ? "snippet only" : s.access}</span>}
+                          {s.access !== "full_text" && s.kind !== "social" && <span className="text-unresolved"> · {s.access === "snippet_only" ? "snippet only" : s.access}</span>}
                           {s.originGroupId && <span> · origin {s.originGroupId}</span>}
                           {s.kind === "user_submitted" && <span> · your article (not counted as corroboration)</span>}
+                          {s.kind === "social" && <span className="text-unresolved"> · social lead, low reliability</span>}
                         </span>
                       </span>
                     </button>

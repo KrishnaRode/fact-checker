@@ -1,5 +1,5 @@
 import type { Finding, InvestigationResult, ModelAssessment, Overall, Passage, SourceRecord, Verdict } from "@/lib/contracts";
-import { isVolatileClaim } from "@/lib/text";
+import { isVolatileClaim, neutralize, salientTerms, terms } from "@/lib/text";
 import { passageMatchesSource } from "./passages";
 
 /**
@@ -22,7 +22,75 @@ export type ValidationContext = {
 
 export type ValidationOutcome = { findings: Finding[]; problems: string[] };
 
-const STATEMENT_CLAIM = /\b(said|says|told|stated|claimed|claims|announced|announces|tweeted|posted|wrote|quoted|according to|alleged|alleges|declared)\b/i;
+const STATEMENT_CLAIM = /\b(said|says|told|stated|claimed|claims|announced|announces|tweeted|posted|wrote|quoted|according to|alleged|alleges|declared|promised|promises|pledged|vowed|assured)\b/i;
+
+/**
+ * High-stakes outcome words. If a claim asserts one of these, a passage can only SUPPORT it if
+ * it states the same outcome itself — "granted relief / interim bail" is not "acquitted, all
+ * cases dropped". A narrow lexical guard against a small model over-reading evidence.
+ */
+const OUTCOMES: { label: string; re: RegExp }[] = [
+  { label: "acquitted", re: /\bacquit(?:s|ted|tal)?\b/i },
+  { label: "convicted", re: /\bconvict(?:s|ed|ion)?\b/i },
+  { label: "cases dropped/withdrawn", re: /\b(?:dropp(?:ed|ing)|withdr[ae]wn?|quash(?:ed)?)\b/i },
+  { label: "dismissed", re: /\bdismiss(?:ed|al)?\b/i },
+  { label: "arrested", re: /\barrest(?:s|ed)?\b/i },
+  { label: "died/killed", re: /\b(?:died|dead|death|killed|passed away)\b/i },
+  { label: "resigned", re: /\bresign(?:s|ed|ation)?\b/i },
+  { label: "banned", re: /\bban(?:s|ned)?\b/i },
+  { label: "sworn in", re: /\b(?:sworn in|took oath|takes oath|oath of office)\b/i },
+  { label: "permanently", re: /\bpermanent(?:ly)?\b/i },
+  { label: "guilty", re: /\bguilty\b/i },
+  { label: "cancelled/scrapped", re: /\b(?:cancel(?:led|ed)?|scrapp?(?:ed)?)\b/i },
+];
+
+/**
+ * Key-term coverage: the cited support must mention most of what the claim is about
+ * (people, places, numbers, events — after synonym mapping). Catches a small model citing a
+ * related but different event ("a student fell" for "a woman and child died").
+ */
+export function uncoveredClaimTerms(claim: string, passageTexts: string[]): { missing: string[]; ratio: number } {
+  const key = [...new Set(terms(claim))].filter((t) => t.length > 2 || /\d/.test(t));
+  if (key.length < 3) return { missing: [], ratio: 1 };
+  const present = new Set(passageTexts.flatMap((t) => terms(t)));
+  const missing = key.filter((t) => !present.has(t));
+  return { missing, ratio: (key.length - missing.length) / key.length };
+}
+
+const NUMBER_WORDS: Record<string, string> = { one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10", eleven: "11", twelve: "12", first: "1", second: "2", third: "3", fourth: "4", fifth: "5", sixth: "6", seventh: "7", eighth: "8", ninth: "9", tenth: "10", eighteenth: "18", twentieth: "20", hundred: "100", thousand: "1000" };
+
+function numbersIn(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of text.matchAll(/\d[\d,]*(?:\.\d+)?/g)) out.add(m[0].replace(/,/g, "").replace(/^0+(?=\d)/, ""));
+  for (const w of text.toLowerCase().match(/[a-z]+/g) ?? []) if (NUMBER_WORDS[w]) out.add(NUMBER_WORDS[w]);
+  return out;
+}
+
+/**
+ * Specific details — numbers and named people/places/organisations — must match exactly.
+ * "25th floor in Mumbai" is not supported by "18th floor in Pune", however similar the event.
+ */
+export function mismatchedSpecifics(claim: string, passageTexts: string[]): string[] {
+  const joined = passageTexts.join(" ");
+  const passageNums = numbersIn(joined);
+  const missing: string[] = [];
+  for (const m of claim.matchAll(/\d[\d,]*(?:\.\d+)?(?:st|nd|rd|th)?/g)) {
+    const n = m[0].replace(/(st|nd|rd|th)$/, "").replace(/,/g, "").replace(/^0+(?=\d)/, "");
+    if (!passageNums.has(n)) missing.push(m[0]);
+  }
+  const passageTerms = new Set(terms(joined));
+  for (const entity of salientTerms(neutralize(claim))) {
+    if (/^\d/.test(entity)) continue;
+    const parts = terms(entity).filter((t) => t.length > 2);
+    // Multi-word names need their distinctive words present; one-word names must appear.
+    if (parts.length && !parts.some((t) => passageTerms.has(t))) missing.push(entity);
+  }
+  return [...new Set(missing)];
+}
+
+export function unsupportedOutcomes(claim: string, passageTexts: string[]): string[] {
+  return OUTCOMES.filter((o) => o.re.test(claim) && !passageTexts.some((t) => o.re.test(t))).map((o) => o.label);
+}
 
 /** Problems worth one bounded repair attempt (structural, not judgement). */
 export function structuralProblems(model: ModelAssessment, ctx: ValidationContext): string[] {
@@ -61,6 +129,7 @@ export function validateAssessment(model: ModelAssessment, ctx: ValidationContex
         missingEvidence: [],
         validationNotes: ["Missing from the model's answer."],
         modelProposedVerdict: null,
+        strength: null,
       };
     }
     const notes: string[] = [];
@@ -116,16 +185,26 @@ export function validateAssessment(model: ModelAssessment, ctx: ValidationContex
               ? "The supporting citations were search snippets or feed summaries, not readable article text."
               : "The model proposed “supported” without citing a supporting passage.",
         );
+      } else if (mismatchedSpecifics(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text)).length) {
+        downgrade(`Specific details in the claim (${mismatchedSpecifics(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text)).slice(0, 4).join(", ")}) do not appear in the supporting passages, so they may describe a different event or different facts.`);
+      } else if (uncoveredClaimTerms(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text)).ratio < 0.6) {
+        const { missing } = uncoveredClaimTerms(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text));
+        downgrade(`The supporting passages do not mention key parts of the claim (${missing.slice(0, 5).join(", ")}), so they may describe a different event.`);
+      } else if (unsupportedOutcomes(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text)).length) {
+        downgrade(`The claim says “${unsupportedOutcomes(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text)).join("”, “")}”, but no supporting passage states that outcome.`);
       } else if (ok.every((pid) => passages.get(pid)!.isQuotation) && !STATEMENT_CLAIM.test(ctx.claims[index]!)) {
         downgrade("Support came only from quoted statements: they show what was said, not that it is true.");
-      } else if (isVolatileClaim(ctx.claims[index]!) && ok.every((pid) => sources.get(passages.get(pid)!.sourceId)?.kind === "reference")) {
-        downgrade("Only Wikipedia supported a time-sensitive claim; it is background, not an authority for current events.");
+      } else if ((isVolatileClaim(ctx.claims[index]!) || STATEMENT_CLAIM.test(ctx.claims[index]!)) && ok.every((pid) => sources.get(passages.get(pid)!.sourceId)?.kind === "reference")) {
+        downgrade("Only Wikipedia supported a claim about recent events or what someone said or promised; it is background, not an authority for that.");
       } else if (isVolatileClaim(ctx.claims[index]!)) {
         const ages = ok.map((pid) => sources.get(passages.get(pid)!.sourceId)?.publishedAt).filter((d): d is string => !!d).map((d) => (refTime - new Date(d).getTime()) / 86_400_000);
         if (ages.length && ages.every((a) => a > 60)) downgrade("The supporting articles are more than two months older than the claim's reference date, so they may describe an earlier event.");
       }
     } else if (verdict === "contradicted") {
-      if (!eligible(contra).length) {
+      const okContra = eligible(contra);
+      if (okContra.length && (isVolatileClaim(ctx.claims[index]!) || STATEMENT_CLAIM.test(ctx.claims[index]!)) && okContra.every((pid) => sources.get(passages.get(pid)!.sourceId)?.kind === "reference")) {
+        downgrade("Only Wikipedia contradicted a claim about recent events or what someone said or promised; it is background, not an authority for that.");
+      } else if (!okContra.length) {
         downgrade(
           contra.length
             ? "The contradicting citations were snippets, summaries or the submitted article itself, not independent readable article text."
@@ -157,6 +236,7 @@ export function validateAssessment(model: ModelAssessment, ctx: ValidationContex
       missingEvidence: proposed.missing_evidence.map((m) => scrubModelText(m, passages)).filter(Boolean),
       validationNotes: notes,
       modelProposedVerdict: verdict !== proposed.verdict ? proposed.verdict : null,
+      strength: null,
     };
   });
 

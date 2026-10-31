@@ -17,6 +17,30 @@ export function VerdictBadge({ verdict }: { verdict: Finding["verdict"] }) {
   );
 }
 
+const STRENGTH_LABEL = { strong: "Strong evidence", moderate: "Moderate evidence", thin: "Thin evidence" } as const;
+
+/** Three-step evidence-strength meter with its reasons. A labelled level, not a probability. */
+export function StrengthMeter({ strength, compact = false }: { strength: Finding["strength"]; compact?: boolean }) {
+  if (!strength) return null;
+  const n = strength.level === "strong" ? 3 : strength.level === "moderate" ? 2 : 1;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span className="inline-flex items-center gap-2 rounded-full border border-border-strong bg-panel-hover px-2.5 py-1 text-[12.5px] text-text" title={strength.reasons.join("; ")}>
+        <span className="flex gap-0.5" aria-hidden>
+          {[1, 2, 3].map((i) => (
+            <span key={i} className={`h-2.5 w-1.5 rounded-sm ${i <= n ? "bg-accent" : "bg-border-strong"}`} />
+          ))}
+        </span>
+        {STRENGTH_LABEL[strength.level]}
+        <span className="text-text-faint">
+          · {strength.independentOrigins} independent origin{strength.independentOrigins === 1 ? "" : "s"}
+        </span>
+      </span>
+      {!compact && <span className="text-[12.5px] text-text-faint">{strength.reasons.join(" · ")}</span>}
+    </div>
+  );
+}
+
 /** Model prose with [P3] references turned into buttons that open the passage. */
 export function CitedText({ text, onInspect, known }: { text: string; onInspect: (id: string) => void; known: Set<string> }) {
   // Bracketed [P3] and bare P3 references to known passages both become buttons.
@@ -59,7 +83,11 @@ export function PassageCard({ passage, source, stance, onInspect }: { passage: P
               <span className="font-mono text-accent-strong">{passage.id}</span>
               <span className="text-text-muted">{source?.publisher ?? source?.title ?? "Unknown source"}</span>
               {source?.publishedAt && <span>· {new Date(source.publishedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>}
-              {passage.retrievalKind !== "article_body" && <span className="text-unresolved">· {passage.retrievalKind === "feed_excerpt" ? "feed summary" : "search snippet"} only</span>}
+              {passage.retrievalKind === "social_post" ? (
+                <span className="text-unresolved">· social lead · low reliability · not evidence</span>
+              ) : (
+                passage.retrievalKind !== "article_body" && <span className="text-unresolved">· {passage.retrievalKind === "feed_excerpt" ? "feed summary" : "search snippet"} only</span>
+              )}
               {source?.originGroupId && <span>· origin group {source.originGroupId}</span>}
               {passage.isQuotation && <span>· quoted statement</span>}
               {passage.suspectedInjection && (
@@ -131,7 +159,10 @@ export function FindingDetail({ finding, result, onInspect, showClaim }: { findi
     <div className="space-y-5">
       {showClaim && (
         <div className="space-y-2">
-          <VerdictBadge verdict={finding.verdict} />
+          <div className="flex flex-wrap items-center gap-2">
+            <VerdictBadge verdict={finding.verdict} />
+            <StrengthMeter strength={finding.strength} compact />
+          </div>
           <p className="text-[17px] leading-snug text-text">“{finding.claim}”</p>
           <p className="text-[15px] leading-relaxed text-text-muted">
             <CitedText text={finding.headline} onInspect={onInspect} known={known} />

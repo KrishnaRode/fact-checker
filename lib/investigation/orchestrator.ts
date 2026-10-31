@@ -2,7 +2,7 @@ import { budgets as allBudgets, cachePolicy } from "@/app.config";
 import type { Finding, InvestigateRequest, InvestigationResult, ModelPlan, Passage, SourceRecord } from "@/lib/contracts";
 import { STAGE_LABELS, type Stage } from "@/lib/contracts";
 import type { Lead, Provider } from "@/lib/providers/types";
-import { canonicalizeUrl, clip, domainOf, explicitDates, explicitYears, formatDay, isVolatileClaim, resolveRelativeDates, terms } from "@/lib/text";
+import { canonicalizeUrl, clip, domainOf, explicitDates, explicitYears, formatDay, isVolatileClaim, neutralize, resolveRelativeDates, salientTerms, terms } from "@/lib/text";
 import { assess, buildAssessmentPrompt, type ModelCaller } from "./assessment";
 import { assessmentCacheKey } from "./cache-key";
 import { detectInput, isFewSentences, isShortClaim, planClaims, queriesFor, sanitizeQuery, type PlannedClaim } from "./claim-planner";
@@ -11,6 +11,10 @@ import { selectPassages } from "./passages";
 import { analyzeProvenance, buildGraph, type ProvLink } from "./provenance";
 import { discover, rankLeads, type DocumentSource, type FetchedDocument } from "./retrieval";
 import { getRun, saveRun } from "./run-store";
+import { classifyClaim, describeClassification, routeFeeds } from "./topics";
+import { computeStrength } from "./strength";
+import { hashtagsFrom } from "@/lib/providers/mastodon";
+import { topicFeeds } from "@/app.config";
 import { deriveOverall, deriveSummary, integrityProblems, validateAssessment } from "./validation";
 
 /**
@@ -36,6 +40,25 @@ export type OrchestratorDeps = {
   } | null;
 };
 
+/** Settle no later than the signal: a step that ignores cancellation cannot hold the run. */
+export function raceAbort<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    p.then(
+      (v) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(v);
+      },
+      (e) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(e);
+      },
+    );
+  });
+}
+
 class Incomplete extends Error {
   constructor(
     public reason: string,
@@ -52,7 +75,12 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
   let budgetMs = budget.totalMs;
   const budgetCtrl = new AbortController();
   let budgetTimer = setTimeout(() => budgetCtrl.abort(), budget.totalMs);
-  const work = AbortSignal.any([userSignal, budgetCtrl.signal]);
+  // Plain controller (strong references) rather than AbortSignal.any chains.
+  const workCtrl = new AbortController();
+  const work = workCtrl.signal;
+  const abortWork = () => workCtrl.abort();
+  userSignal.addEventListener("abort", abortWork, { once: true });
+  budgetCtrl.signal.addEventListener("abort", abortWork, { once: true });
   /** Extend the visible budget once the number of claims is known (measured: ~9 s per extra claim). */
   const extendBudget = (extraMs: number) => {
     if (extraMs <= 0) return;
@@ -84,6 +112,7 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
   let deferred: string[] = [];
   const assumptions: string[] = [];
   let submittedSourceId: string | null = null;
+  let routing = { detected: "", feeds: [] as string[] };
 
   const budgetReason = () => `The ${req.depth} investigation reached its ${Math.round(budgetMs / 1000)}-second budget${stage ? ` while ${STAGE_LABELS[stage].toLowerCase()}` : ""}. Sources found so far are shown; no verdict is drawn from an incomplete run.`;
   const startStage = (s: Stage) => {
@@ -171,7 +200,7 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
       assumptions,
       sources,
       passages,
-      coverage: { scope: deps.scope, providersAttempted: [...attempted], providersSucceeded: [...succeeded], warnings },
+      coverage: { scope: deps.scope, providersAttempted: [...attempted], providersSucceeded: [...succeeded], warnings, routing },
       graph,
       model: llmCalls > 0 ? deps.modelName : null,
       timing: { totalMs: Date.now() - startedAt, retrievalMs, inferenceMs, firstEvidenceMs: ch.firstEvidenceMs, modelWarm, llmCalls },
@@ -219,7 +248,7 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
             }
           }
         : null;
-      const plan = await planClaims(planText, budget.maxClaims, budget.maxQueriesPerClaim, plannerCall, headline);
+      const plan = await raceAbort(planClaims(planText, budget.maxClaims, budget.maxQueriesPerClaim, plannerCall, headline), work);
       claims = plan.claims;
       deferred = plan.deferred;
       if (plan.note) assumptions.push(plan.note);
@@ -256,7 +285,22 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
         if (announced++ < 14) ch.emit("source_discovered", { url: l.url, title: clip(l.title, 160), publisher: l.publisher, provider: l.provider, publishedAt: l.publishedAt });
       },
     };
-    const providerQuery = { queries: allQueries, claims: claims.map((c) => c.claim), referenceDate: refDate, maxResults: budget.discoveryCandidates, signal: work };
+    // Keyword routing: places and topics in the claim decide which city/topic feeds to scan.
+    let feedIds: string[] = [];
+    const cls = classifyClaim(`${claimText} ${headline ?? ""}`);
+    const hashtags = hashtagsFrom([...cls.places.filter((p) => p.kind !== "country" || p.name === "india").map((p) => p.name), ...cls.topics.flatMap((t) => t.matched), ...salientTerms(neutralize(claimText))]);
+    if (deps.providers.some((p) => p.id === "rss")) {
+      const route = routeFeeds(cls, budget.topicFeeds);
+      feedIds = route.ids;
+      routing = { detected: describeClassification(cls), feeds: route.ids.map((id) => { const f = topicFeeds.find((x) => x.id === id)!; return `${f.publisher} (${f.tags.filter((t) => !t.startsWith("region")).map((t) => t.split(":")[1]).join(", ") || "national"})`; }) };
+      ch.emit("observation", {
+        message: feedIds.length
+          ? `Detected ${routing.detected}. Also scanning ${feedIds.length} matching feed${feedIds.length === 1 ? "" : "s"}: ${routing.feeds.join("; ")}.`
+          : `Detected ${routing.detected}; no specialised feed matches, so the general feeds are searched.`,
+        sourceIds: [],
+      });
+    }
+    const providerQuery = { queries: allQueries, claims: claims.map((c) => c.claim), referenceDate: refDate, maxResults: budget.discoveryCandidates, signal: work, feedIds, hashtags };
     const fast = deps.providers.filter((p) => p.latency !== "slow");
     const slow = deps.providers.filter((p) => p.latency === "slow");
     const firstWaveDeadline = Math.min(deadline - allBudgets.minInferenceMs, Date.now() + budget.discoveryMs + budget.fetchMs);
@@ -272,7 +316,10 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
     const pickLeads = (leads: Lead[], limit: number) => {
       const ranked = rankLeads(leads, claimText, { volatile, referenceDate: refDate, limit: limit + 2, perDomain: budget.perDomainFetches });
       const fresh = ranked.filter((l) => !sources.some((s) => canonicalizeUrl(s.url) === canonicalizeUrl(l.url)));
-      return [...fresh.filter((l) => !l.fullText).slice(0, limit), ...fresh.filter((l) => l.fullText).slice(0, 2)];
+      // Social posts never use a fetch slot: at most two are kept as low-reliability leads.
+      const social = leads.filter((l) => l.kind === "social" && !sources.some((s) => canonicalizeUrl(s.url) === canonicalizeUrl(l.url))).slice(0, 2);
+      const news = fresh.filter((l) => l.kind !== "social");
+      return [...news.filter((l) => !l.fullText).slice(0, limit), ...news.filter((l) => l.fullText).slice(0, 2), ...social];
     };
     const toFetch = pickLeads(outcome.leads, budget.fetchCount);
     endStage("retrieve", `${outcome.leads.length} candidate${outcome.leads.length === 1 ? "" : "s"} from ${outcome.succeeded.length} of ${outcome.attempted.length} fast providers${slow.length ? `; ${slow.map((p) => p.name).join(", ")} still searching` : ""}`);
@@ -284,7 +331,7 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
       const left = until - Date.now();
       if (left < 400) return;
       try {
-        const doc = await deps.documents.fetch(lead, { signal: work, timeoutMs: left, revalidate: req.refresh });
+        const doc = await raceAbort(deps.documents.fetch(lead, { signal: work, timeoutMs: left, revalidate: req.refresh }), work);
         addSource(doc);
       } catch (err) {
         if (userSignal.aborted) throw err;
@@ -300,6 +347,37 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
       const extra = pickLeads(late.leads, req.depth === "deep" ? 3 : 2);
       const until = Math.min(deadline - allBudgets.minInferenceMs, Date.now() + 3_500);
       if (extra.length && until - Date.now() > 1_500) await Promise.all(extra.map((l) => fetchOne(l, until)));
+      checkAbort();
+    }
+
+    // Follow the story: a relevant report we could not read (paywall, bot block) is a lead, not a
+    // dead end. Search again with its headline to find the same story from other outlets.
+    const unreadable = toFetch.filter((l) => {
+      const s = sources.find((x) => canonicalizeUrl(x.url) === canonicalizeUrl(l.url));
+      return s && l.kind !== "social" && s.access !== "full_text" && terms(l.title).length >= 3;
+    });
+    const readableCount = sources.filter((s) => s.access === "full_text" && s.kind !== "user_submitted").length;
+    if (unreadable.length && readableCount < 3 && deadline - Date.now() > allBudgets.minInferenceMs + 4_000) {
+      const names = [...new Set(unreadable.map((l) => l.publisher ?? domainOf(l.url)))].join(", ");
+      ch.emit("observation", { message: `${names} could not be read. Looking for the same story from other outlets.`, sourceIds: [] });
+      const headlineQueries = [...new Set(unreadable.map((l) => sanitizeQuery(l.title)).filter((q): q is string => !!q))].slice(0, 2);
+      if (headlineQueries.length) {
+        const again = await discover(fast, { ...providerQuery, queries: headlineQueries, claims: [...providerQuery.claims, ...unreadable.map((l) => l.title)], deadline: Math.min(deadline - allBudgets.minInferenceMs, Date.now() + 3_000) }, hooks);
+        record(again);
+        const tried = new Set(sources.map((s) => canonicalizeUrl(s.url)));
+        const blockedDomains = new Set(unreadable.map((l) => domainOf(l.url)));
+        const headlineText = unreadable.map((l) => l.title).join(" ");
+        const extra = rankLeads(again.leads, `${claimText} ${headlineText}`, { volatile, referenceDate: refDate, limit: 6, perDomain: 1 })
+          .filter((l) => !tried.has(canonicalizeUrl(l.url)) && !blockedDomains.has(domainOf(l.url)) && !l.fullText)
+          .slice(0, req.depth === "deep" ? 4 : 3);
+        const until = Math.min(deadline - allBudgets.minInferenceMs, Date.now() + 4_500);
+        if (extra.length) await Promise.all(extra.map((l) => fetchOne(l, until)));
+        const found = sources.filter((s) => extra.some((l) => canonicalizeUrl(l.url) === canonicalizeUrl(s.url)) && s.access === "full_text");
+        ch.emit("observation", {
+          message: found.length ? `Found the story at ${found.map((s) => s.publisher ?? domainOf(s.url)).join(", ")}.` : "No other readable outlet with the same story was found.",
+          sourceIds: found.map((s) => s.id),
+        });
+      }
       checkAbort();
     }
 
@@ -356,7 +434,14 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
       sources.map((s) => ({ sourceId: s.id, text: sourceTexts.get(s.id) ?? "", textKind: docsById.get(s.id)!.textKind, excluded: s.id === submittedSourceId })),
       claims.map((c) => c.claim),
       { perSource: budget.passagesPerSource, maxPassages: budget.maxPassages, maxChars: budget.evidenceChars },
-    ).map((c) => ({ id: c.id, sourceId: c.sourceId, text: c.text, normalizedStart: c.normalizedStart, normalizedEnd: c.normalizedEnd, retrievalKind: c.retrievalKind, isQuotation: c.isQuotation, suspectedInjection: c.suspectedInjection }));
+    )
+      // At most two social posts reach the model, labelled as low-reliability leads.
+      .filter((c, _i, all) => c.retrievalKind !== "social_post" || all.filter((x) => x.retrievalKind === "social_post").indexOf(c) < 2)
+      .map((c, i) => ({ id: `P${i + 1}`, sourceId: c.sourceId, text: c.text, normalizedStart: c.normalizedStart, normalizedEnd: c.normalizedEnd, retrievalKind: c.retrievalKind, isQuotation: c.isQuotation, suspectedInjection: c.suspectedInjection }));
+    const socialSources = [...new Set(passages.filter((p) => p.retrievalKind === "social_post").map((p) => p.sourceId))];
+    if (socialSources.length) {
+      ch.emit("observation", { message: `${socialSources.length} public social post${socialSources.length === 1 ? "" : "s"} mention this — shown as low-reliability leads, not evidence.`, sourceIds: socialSources });
+    }
     for (const p of passages) ch.emit("passage_selected", { passageId: p.id, sourceId: p.sourceId, preview: clip(p.text, 180) });
     const injected = [...new Set(passages.filter((p) => p.suspectedInjection).map((p) => p.sourceId))];
     if (injected.length) {
@@ -389,20 +474,50 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
     if (!succeeded.size && !base && input.kind === "text") {
       throw new Incomplete("No source provider could be reached, so nothing was checked. Check your internet connection and retry.", "partial");
     }
-    if (!passages.length) {
-      // Nothing relevant to compare: the honest answer needs no model call.
-      endStage("compare", "No relevant passages — no model call needed");
+    if (passages.length && claims.every((c) => !c.checkable)) {
+      // Opinions/predictions are labelled by rule, so a model call would not change the outcome.
+      endStage("compare", "Opinion or prediction — no model call needed");
       startStage("validate");
       const findings: Finding[] = claims.map((c, i) => ({
         id: `C${i + 1}`,
         claim: c.claim,
+        verdict: "not_fact_checkable",
+        headline: "This is a prediction or opinion. Evidence available today cannot settle it.",
+        explanation: "Related coverage is listed below as context only; it describes the present, not the outcome being predicted.",
+        supportingPassageIds: [],
+        contradictingPassageIds: [],
+        contextPassageIds: passages.slice(0, 3).map((p) => p.id),
+        limitations: [],
+        missingEvidence: [],
+        validationNotes: ["Classified as an opinion or prediction by rule; no model call was made."],
+        modelProposedVerdict: null,
+        strength: null,
+      }));
+      const draft = result("complete", null, findings);
+      endStage("validate", "Context passages verified");
+      saveRun({ result: draft, sourceTexts, documents: docsById });
+      return draft;
+    }
+    if (!passages.length) {
+      // Nothing relevant to compare: the honest answer needs no model call.
+      endStage("compare", "No relevant passages — no model call needed");
+      startStage("validate");
+      const unreadableLeads = sources.filter((s) => s.access !== "full_text" && s.kind !== "user_submitted" && s.kind !== "social");
+      const leadList = unreadableLeads.slice(0, 3).map((s) => `${s.publisher ?? domainOf(s.url)}: “${clip(s.title, 110)}”`).join("; ");
+      const findings: Finding[] = claims.map((c, i) => ({
+        id: `C${i + 1}`,
+        claim: c.claim,
         verdict: c.checkable ? "unresolved" : "not_fact_checkable",
-        headline: c.checkable
-          ? "No relevant evidence was found in the sources searched. That is not evidence that the claim is false."
-          : "This reads as an opinion or prediction, which evidence cannot settle yet.",
-        explanation: c.checkable
-          ? `The ${deps.scope === "broader_web" ? "searched web sources" : "selected sources"} returned nothing that addresses this claim. Coverage is limited, so the claim remains unverified either way.`
-          : "No retrieved passage addressed it, and its nature means a factual check is not possible yet.",
+        headline: !c.checkable
+          ? "This reads as an opinion or prediction, which evidence cannot settle yet."
+          : unreadableLeads.length
+            ? "Possibly matching reports were found, but none could be read, so the claim could not be verified."
+            : "No relevant evidence was found in the sources searched. That is not evidence that the claim is false.",
+        explanation: !c.checkable
+          ? "No retrieved passage addressed it, and its nature means a factual check is not possible yet."
+          : unreadableLeads.length
+            ? `Headlines that may match: ${leadList}. Their article text was blocked or unavailable, and no other readable outlet carrying the story was found. A headline alone is not enough for a verdict — open the source to read it yourself.`
+            : `The ${deps.scope === "broader_web" ? "searched web sources" : "selected sources"} returned nothing that addresses this claim. Coverage is limited, so the claim remains unverified either way.`,
         supportingPassageIds: [],
         contradictingPassageIds: [],
         contextPassageIds: [],
@@ -410,13 +525,14 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
         missingEvidence: c.checkable ? ["A primary source (official notice, record or direct report) about this claim."] : [],
         validationNotes: ["Decided without a model call because no relevant passages were found."],
         modelProposedVerdict: null,
+        strength: null,
       }));
       const draft = result("complete", null, findings);
       endStage("validate", "No citations to verify");
       saveRun({ result: draft, sourceTexts, documents: docsById });
       return draft;
     }
-    const check = await modelCheck;
+    const check = await raceAbort(modelCheck, work);
     if (!check.ok) {
       ch.emit("provider_warning", { provider: "ollama", code: check.code, message: check.message });
       throw new Incomplete(`${check.message} Retrieved sources are shown below for inspection.`, "partial");
@@ -429,7 +545,7 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
     const t0 = Date.now();
     let assessed;
     try {
-      assessed = await assess(deps.callAssessment, prompt, vctx, { deadline, minInferenceMs: allBudgets.minInferenceMs, signal: work });
+      assessed = await raceAbort(assess(deps.callAssessment, prompt, vctx, { deadline, minInferenceMs: allBudgets.minInferenceMs, signal: work }), work);
     } catch (err) {
       llmCalls++;
       inferenceMs += Date.now() - t0;
@@ -445,7 +561,8 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
 
     // ── 5. Validate ──────────────────────────────────────────────────────────
     startStage("validate");
-    const { findings } = validateAssessment(assessed.value, vctx);
+    const citedOriginals = new Set(prov.citedOriginals);
+    const findings = validateAssessment(assessed.value, vctx).findings.map((f) => ({ ...f, strength: computeStrength(f, passages, sources, citedOriginals) }));
     const draft = result("complete", null, findings);
     const problems = integrityProblems(draft, sourceTexts);
     if (problems.length) throw new Incomplete(`Validation failed: ${problems[0]}`, "partial");
@@ -479,5 +596,6 @@ export async function runInvestigation(req: InvestigateRequest, deps: Orchestrat
     return r;
   } finally {
     clearTimeout(budgetTimer);
+    userSignal.removeEventListener("abort", abortWork);
   }
 }

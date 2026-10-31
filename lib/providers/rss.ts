@@ -1,6 +1,6 @@
 import "server-only";
 import { XMLParser } from "fast-xml-parser";
-import { cachePolicy, feeds } from "@/app.config";
+import { cachePolicy, feeds, topicFeeds } from "@/app.config";
 import { cacheGet, cacheSet } from "@/lib/cache";
 import { safeFetch } from "@/lib/network/safe-fetch";
 import { bm25Scores, canonicalizeUrl, coverage, stripHtml, terms, toIso } from "@/lib/text";
@@ -120,6 +120,41 @@ export async function refreshFeedIndex(signal?: AbortSignal, perFeedTimeoutMs = 
 
 export function clearFeedMemory(): void {
   memory = null;
+  topicMemory.clear();
+}
+
+/* ── Routed topic feeds: fetched on demand, cached per feed ──────────────── */
+
+const topicMemory = new Map<string, { at: number; entries: FeedEntry[] }>();
+const topicInflight = new Map<string, Promise<FeedEntry[]>>();
+
+async function topicFeedEntries(id: string, signal: AbortSignal, timeoutMs: number): Promise<FeedEntry[]> {
+  const feed = topicFeeds.find((f) => f.id === id);
+  if (!feed) return [];
+  const mem = topicMemory.get(id);
+  if (mem && Date.now() - mem.at < cachePolicy.feedIndexTtlMs) return mem.entries;
+  const disk = await cacheGet<FeedEntry[]>("feeds", `topic:${id}`);
+  if (disk) {
+    topicMemory.set(id, { at: disk.storedAt, entries: disk.value });
+    return disk.value;
+  }
+  const running = topicInflight.get(id);
+  if (running) return running;
+  const p = (async () => {
+    try {
+      const res = await safeFetch(feed.url, { signal, timeoutMs, maxBytes: 1_500_000, accept: "application/rss+xml,application/atom+xml,application/xml,text/xml" });
+      const entries = parseFeed(res.text, feed).slice(0, 120);
+      topicMemory.set(id, { at: Date.now(), entries });
+      await cacheSet("feeds", `topic:${id}`, entries, cachePolicy.feedIndexTtlMs, 80).catch(() => undefined);
+      return entries;
+    } catch {
+      return mem?.entries ?? [];
+    } finally {
+      topicInflight.delete(id);
+    }
+  })();
+  topicInflight.set(id, p);
+  return p;
 }
 
 export async function feedIndexInfo(): Promise<{ entries: number; refreshedAt: string | null; failing: string[] }> {
@@ -144,24 +179,36 @@ export const rssProvider: Provider = {
   name: "Selected news feeds",
   kind: "core",
   scope: "selected",
-  description: `A bounded index of recent headlines from ${feeds.length} public feeds (BBC, The Hindu, Indian Express, Mint, NDTV, Guardian, NPR, Al Jazeera, Alt News, FactCheck.org). Recent items only.`,
+  description: `A bounded index of recent headlines from ${feeds.length} public feeds, plus ${topicFeeds.length} city and topic feeds chosen per claim (BBC, The Hindu, Indian Express, Hindustan Times, Times of India, News18, Mint, NDTV, Guardian, NPR, Al Jazeera, Alt News, FactCheck.org). Recent items only.`,
   modes: ["live"],
-  timeoutMs: 4_500,
-  cachePolicy: "Index refreshed when older than 20 minutes; up to 900 recent items kept.",
+  timeoutMs: 6_000,
+  cachePolicy: "Index refreshed when older than 20 minutes; up to 900 recent items kept. Routed feeds cached per feed for 20 minutes.",
   enabled: () => true,
   disabledReason: () => null,
   async search(q): Promise<Lead[]> {
+    // Routed feeds download in parallel with any core-index refresh.
+    const routedP = q.feedIds?.length
+      ? Promise.all(q.feedIds.map((id) => topicFeedEntries(id, q.signal, Math.max(800, Math.min(4_000, remaining(q.deadline) - 300))))).then((x) => x.flat())
+      : Promise.resolve([] as FeedEntry[]);
     let idx = await loadIndex();
     const age = idx ? Date.now() - new Date(idx.refreshedAt).getTime() : Infinity;
     if (!idx || !idx.entries.length || age > cachePolicy.feedIndexTtlMs) {
       const budget = Math.min(this.timeoutMs, remaining(q.deadline) - 300);
       if (budget > 800) idx = await refreshFeedIndex(q.signal, budget).catch(() => idx);
     }
-    if (!idx?.entries.length) return [];
+    const routed = await routedP;
+    const seen = new Set<string>();
+    const pool = [...routed, ...(idx?.entries ?? [])].filter((e) => {
+      const k = canonicalizeUrl(e.url);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    if (!pool.length) return [];
     const qTerms = terms(q.queries.join(" ") + " " + q.claims.join(" "));
-    const docs = idx.entries.map((e) => terms(`${e.title} ${e.title} ${e.summary}`));
+    const docs = pool.map((e) => terms(`${e.title} ${e.title} ${e.summary}`));
     const scores = bm25Scores(qTerms, docs);
-    return idx.entries
+    return pool
       .map((e, i) => ({ e, s: scores[i]!, c: coverage(qTerms, docs[i]!) }))
       .filter((x) => x.s > 0 && x.c >= 0.15)
       .sort((a, b) => b.s - a.s)

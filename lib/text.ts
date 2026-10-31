@@ -27,7 +27,7 @@ const STOPWORDS = new Set(
     "what which who whom whose when where why how all any both each few more most other some such only own same up down out off again " +
     "further once now new news breaking share forward forwarded viral please urgent alert message whatsapp fake true false real hoax " +
     "says said say according report reports reported claim claims claimed people everyone anyone someone today yesterday tomorrow " +
-    "before after deleted delete sharing friends family group groups send sent"
+    "before after deleted delete sharing friends family group groups send sent did does is was were any anyone somebody something"
   ).split(/\s+/),
 );
 
@@ -42,12 +42,28 @@ export function stem(t: string): string {
   return t;
 }
 
+/**
+ * Small synonym map for everyday news vocabulary (forwards say "lady", reports say "woman").
+ * Deliberately conservative: words map to one canonical token only when they are near-equivalent.
+ */
+const SYNONYMS: Record<string, string> = {};
+for (const [canon, words] of Object.entries({
+  woman: "woman women lady ladie wife mother housewife",
+  child: "child children kid son daughter boy toddler infant minor baby",
+  die: "die died dead death killed",
+  fall: "fall fell falling jump jumped jumping plunge plunged",
+  floor: "floor storey story",
+  building: "building tower apartment society highrise high-rise",
+  police: "police cop",
+  arrest: "arrest arrested detain detained custody",
+})) for (const w of words.split(" ")) SYNONYMS[w] = canon;
+
 /** Lower-cased, lightly stemmed content terms, preserving Unicode letters/digits. */
 export function terms(text: string): string[] {
   return (text.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) ?? [])
     .map((t) => t.replace(/['’]s$/, "").replace(/^-+|-+$/g, ""))
     .filter((t) => t.length > 1 && !STOPWORDS.has(t))
-    .map(stem);
+    .map((t) => SYNONYMS[t] ?? SYNONYMS[stem(t)] ?? stem(t));
 }
 
 /** Words that look like named entities (capitalised, not sentence-initial filler) and numbers. */

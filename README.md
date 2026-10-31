@@ -2,7 +2,7 @@
 
 **Before you believe it.** Bring a claim. Follow the evidence.
 
-*The Sunday Builds — Free AI. Real Problems. Every Sunday.* · Built by Krishna Rode
+*The Sunday Builds #17 — Free AI. Real Problems. Every Sunday.* · Built by Krishna Rode
 
 People receive alarming headlines, WhatsApp forwards and confident claims. Fact Checker runs a
 short, visible investigation. It retrieves sources, picks out the passages that matter, groups
@@ -70,6 +70,26 @@ mode) uses a bundled, fictional corpus with no network access. It is always labe
 - **GDELT DOC API:** worldwide news discovery. It is slow (11–17 s measured) and rate-limited
   (1 request per 5 s), so it runs in parallel and never delays first evidence.
 
+- **Keyword routing:** places (cities, states, countries) and topics (politics, crime/courts,
+  religion, technology, business, health, science, environment, sports, education) are extracted
+  from the claim. They route the search to up to 6 matching feeds from a catalog of 41 city,
+  national and section feeds (TOI/HT/IE city feeds, tech, business, health…). The routing is
+  shown in the activity feed and the answer. Professions map to their beat: doctor → health,
+  teacher → education.
+- **Follow the story:** if a relevant report can't be read (paywall or bot block), its headline is
+  searched again to find the same story at other outlets before concluding anything.
+
+**Social media → low-reliability leads only**
+- **Mastodon public hashtags** from the claim's keywords, via the official API with no login.
+  Posts are labelled *Social lead · low reliability* and **never count toward a verdict or
+  evidence strength**. A news link shared in a post is fetched and judged like any article.
+- Not used, and why (checked 31 Oct 2026):
+  - Reddit: robots.txt disallows all bots, and the API returns 403.
+  - Bluesky public search: 403.
+  - YouTube channel feeds: robots.txt disallows them.
+  - X, Facebook, Instagram, WhatsApp: login or a paid API is required.
+- Disable with `FACTCHECK_DISABLE_SOCIAL=1`.
+
 **Optional (bring your own key) → "Broader web search enabled"**
 - **Brave Search API:** set `BRAVE_SEARCH_API_KEY`.
 - **Google Fact Check Tools:** set `GOOGLE_FACT_CHECK_API_KEY`. Existing fact-checks are
@@ -94,6 +114,17 @@ coverage limitation.
 | ⚪ **Not fact-checkable** | Opinion, value judgement or prediction. |
 | 🟠 **Mixed findings** | Claims got different labels, or some were not checked. |
 | ⚪ **Investigation incomplete** | The run stopped (time budget, model offline, cancelled). **No verdict.** |
+
+**Evidence strength** (Strong / Moderate / Thin) appears with green, red and missing-context
+labels. Code works it out; the model doesn't:
+- It is counted in **independent origins**, not websites: 20 copies of one wire story are one
+  origin.
+- It goes up when an original or fact-checking source is among them.
+- It goes down for conflicting evidence, background-only sources (Wikipedia) or quote-only
+  support.
+- Social posts are listed but never add strength.
+
+It is a labelled level with its reasons, not a probability and not a trust score for any outlet.
 
 Green and red require cited, readable full-text evidence. The server checks this; the model's
 proposal alone is not enough. A label changed by these checks shows *"The local model proposed …;
@@ -142,8 +173,9 @@ npm run benchmark -- --base http://127.0.0.1:3016 --runs 3 --cold
   8/8 cases, and exactly matched 6/8. It tends to choose *Not enough evidence* where a reviewer
   chose *Misleading context* or *Contradicted*. Validation stops it from issuing unsupported
   green/red labels, but it cannot prove the model read a passage correctly.
+- For twisted political claims, `qwen3:4b` often answers *Not enough evidence* where the evidence
+  actually contradicts the claim (see DEMO.md). Guards stop false greens; they cannot create reds.
 - Latency depends heavily on the machine; see [BENCHMARKS.md](BENCHMARKS.md).
 - English only. No image, video or deepfake analysis. No social-network ingestion.
-- The build number is intentionally unset until confirmed.
 
 More: [project.md](project.md) · [design.md](design.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [DEMO.md](DEMO.md) · [BENCHMARKS.md](BENCHMARKS.md)

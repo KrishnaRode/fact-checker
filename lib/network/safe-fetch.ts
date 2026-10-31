@@ -104,9 +104,17 @@ export type SafeFetchOptions = {
   allowNotModified?: boolean;
 };
 
+/** Caller signal + timeout via a plain controller (strong references, timer cleared by GC-safe close). */
 function combineSignals(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
-  const t = AbortSignal.timeout(timeoutMs);
-  return signal ? AbortSignal.any([signal, t]) : t;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new DOMException("Timed out", "TimeoutError")), timeoutMs);
+  timer.unref?.();
+  if (signal) {
+    if (signal.aborted) ctrl.abort();
+    else signal.addEventListener("abort", () => ctrl.abort(), { once: true });
+  }
+  ctrl.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+  return ctrl.signal;
 }
 
 export async function safeFetch(rawUrl: string, opts: SafeFetchOptions = {}): Promise<SafeResponse> {

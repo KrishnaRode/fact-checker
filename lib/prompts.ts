@@ -12,6 +12,8 @@ Labels (choose one per claim):
 - "unresolved": the evidence is missing, only loosely related, or conflicting. Absence of coverage is NOT contradiction.
 - "not_fact_checkable": an opinion, prediction about the future, or value judgement that evidence cannot settle yet.
 
+If a claim is phrased as a question ("Did X happen?"), assess the statement it asks about ("X happened").
+
 For every passage you rely on, list it in "evidence" with stance "supports", "contradicts" or "context" relative to THAT claim. "supports" means the passage makes the claim more likely true; "contradicts" means it makes the claim false. A passage that only reports what someone said supports that the statement was made, not that it is true. Wikipedia, feed summaries and search snippets are background only.
 
 In "evidence", list only passages that matter for that claim (at most six). Write "finding" as one plain sentence a non-expert understands. Write "explanation" as at most two short sentences naming the key passage ids in brackets like [P2]. Keep limitations and missing_evidence to at most two short, specific items each; empty lists are fine and preferred when nothing important is missing.`;

@@ -8,7 +8,7 @@
 | Primary action | Investigate |
 | Owner | Krishna Rode |
 | Series | The Sunday Builds — *Free AI. Real Problems. Every Sunday.* |
-| Build number | *unset until confirmed* |
+| Build number | **#17** |
 | Repository | https://github.com/KrishnaRode/fact-checker |
 | Default model | `qwen3:4b` (quality option `qwen3:8b`) via Ollama |
 | Port | 3016 (loopback) |

@@ -2,7 +2,7 @@
 
 import { Check, Cpu, Database, Globe2, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { appConfig } from "@/app.config";
+import { appConfig, seriesLabel } from "@/app.config";
 import type { HealthReport, Mode } from "@/lib/contracts";
 import { getCacheStats, resetLocalData } from "@/lib/client/api";
 import { connectionSummary } from "./ConnectionStatus";
@@ -22,7 +22,7 @@ function Code({ children }: { children: string }) {
   return <code className="block overflow-x-auto rounded-lg border border-border bg-bg-soft px-3 py-2 font-mono text-[12.5px] text-text">{children}</code>;
 }
 
-export function SettingsDrawer({ open, onClose, health, onRefreshHealth, mode, onModeChange }: { open: boolean; onClose: () => void; health: HealthReport | null; onRefreshHealth: () => void; mode: Mode; onModeChange: (m: Mode) => void }) {
+export function SettingsDrawer({ open, onClose, health, onRefreshHealth, mode, onModeChange, recheck }: { open: boolean; onClose: () => void; health: HealthReport | null; onRefreshHealth: () => void; mode: Mode; onModeChange: (m: Mode) => void; recheck: (() => void) | null }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const [stats, setStats] = useState<Awaited<ReturnType<typeof getCacheStats>> | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -74,6 +74,12 @@ export function SettingsDrawer({ open, onClose, health, onRefreshHealth, mode, o
                 </button>
               ))}
             </div>
+            <p className="mt-2 text-[12.5px] text-text-faint">Applies to your next investigation.</p>
+            {recheck && (
+              <button type="button" onClick={recheck} className="mt-3 inline-flex items-center gap-2 rounded-full bg-accent px-4 py-2 text-[14px] font-semibold text-bg hover:bg-accent-strong">
+                <Globe2 size={15} aria-hidden /> Re-check this claim {mode === "live" ? "live" : "in demo mode"}
+              </button>
+            )}
             <p className="mt-2 text-[12.5px] text-text-faint">Demo mode runs the same pipeline, validators and local model over a fictional bundled corpus. It never touches the network and is always labelled.</p>
           </section>
 
@@ -152,7 +158,7 @@ export function SettingsDrawer({ open, onClose, health, onRefreshHealth, mode, o
 
           <section className="border-t border-border pt-5 text-[13px] leading-relaxed text-text-faint">
             <p className="text-text-muted">
-              {appConfig.name} · {appConfig.series}
+              {appConfig.name} · {seriesLabel}
             </p>
             <p>{appConfig.seriesLine} Built by {appConfig.owner}.</p>
             <p className="mt-2">Fact Checker gives evidence-linked assessments as of the time checked. It cannot certify truth, judge intent or guarantee accuracy.</p>

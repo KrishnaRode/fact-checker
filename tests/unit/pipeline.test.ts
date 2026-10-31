@@ -66,6 +66,17 @@ describe("investigation pipeline (demo corpus, scripted model)", () => {
     expect(result.timing.llmCalls).toBe(0);
   });
 
+  it("labels a prediction by rule without a model call", async () => {
+    let calls = 0;
+    const { result } = await runDemo("Kestrel Bay will be the best city in the world to live in by 2040.", () => {
+      calls++;
+      return assessment([{ verdict: "supported" }]);
+    });
+    expect(calls).toBe(0);
+    expect(result.overall).toBe("not_fact_checkable");
+    expect(result.findings[0]!.supportingPassageIds).toEqual([]);
+  });
+
   it("surfaces a failing provider independently while others complete", async () => {
     const broken: Provider = { ...demoProvider, id: "broken", name: "Broken provider", search: async () => { throw new ProviderError("broken", "rate_limited", "Rate limited."); } };
     const { result, events } = await runDemo("The Riverbend Museum reopens on Tuesday 3 November at 10 am.", (prompt) =>
@@ -147,5 +158,17 @@ describe("investigation pipeline (demo corpus, scripted model)", () => {
     const { result, events } = await runDemo("The Riverbend Museum reopens on Tuesday 3 November at 10 am.", () => assessment([{ verdict: "unresolved" }]));
     expect(result.mode).toBe("demo");
     expect(events[0]!.type === "started" && events[0]!.payload.mode).toBe("demo");
+  });
+});
+
+describe("deadlines cannot be held hostage by a hung step", () => {
+  it("raceAbort settles when the signal aborts even if the work never settles or listens", async () => {
+    const { raceAbort } = await import("@/lib/investigation/orchestrator");
+    const ctrl = new AbortController();
+    const never = new Promise<never>(() => undefined);
+    const t0 = Date.now();
+    setTimeout(() => ctrl.abort(), 50);
+    await expect(raceAbort(never, ctrl.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(Date.now() - t0).toBeLessThan(1_000);
   });
 });

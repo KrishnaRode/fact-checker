@@ -24,8 +24,13 @@ export function detectInput(input: string): InputKind {
  */
 const OPINION = /\b(best|worst|greatest|most beautiful|most liveable|ought to|i think|i believe|in my opinion|deserves?|by 20[3-9]\d|in the (?:distant )?future|will (?:surely|definitely|never) )\b/i;
 
-export function looksUncheckable(claim: string): boolean {
-  return OPINION.test(claim);
+/** Outcomes that cannot have happened yet: elections, matches, markets. */
+const OUTCOME_PREDICTION = /\b(will|is going to|are going to|set to|bound to)\s+(?:\w+\s+){0,2}(win|lose|sweep|form (?:the )?government|come (?:back )?to power|be re-?elected|get (?:a )?majority|defeat|beat|crash|collapse)\b/i;
+
+export function looksUncheckable(claim: string, referenceYear = new Date().getFullYear()): boolean {
+  if (OPINION.test(claim) || OUTCOME_PREDICTION.test(claim)) return true;
+  // "will …" about an explicit future year is a prediction (but "will reopen on 3 Nov" is not).
+  return /\bwill\b/i.test(claim) && (claim.match(/\b20\d{2}\b/g) ?? []).some((y) => Number(y) > referenceYear);
 }
 
 /** Sanitise a model- or user-derived search query: plain words only, bounded length. */
@@ -127,7 +132,7 @@ export async function planClaims(
         seen.add(k);
         return true;
       });
-      const checked = claims.slice(0, maxClaims).map((c) => ({ claim: c.claim.trim(), checkable: c.checkable, queries: queriesFor(c.claim, [], maxQueries) }));
+      const checked = claims.slice(0, maxClaims).map((c) => ({ claim: c.claim.trim(), checkable: c.checkable && !looksUncheckable(c.claim), queries: queriesFor(c.claim, [], maxQueries) }));
       if (checked.length) {
         return {
           claims: checked,

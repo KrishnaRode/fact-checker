@@ -94,6 +94,49 @@ describe("validateAssessment", () => {
     expect(findings[0]!.verdict).toBe("unresolved");
   });
 
+  it("does not let a related but different event support the claim", () => {
+    const text = "A 23-year-old MBA student died after jumping from the sixth floor of a university building in Jaipur.";
+    const ctx = { ...base, claims: ["Did any lady and child die by fall from a building in Pune?"], passages: [passage("P1", "S1", text)] };
+    const { findings } = validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), ctx);
+    expect(findings[0]!.verdict).toBe("unresolved");
+    expect(findings[0]!.validationNotes.join(" ")).toMatch(/child|Pune/);
+    // Everyday wording still matches the report's wording via synonyms.
+    const pune = { ...ctx, passages: [passage("P1", "S1", "A woman and her six-year-old son died after jumping from the 18th floor of a building in Pune's Wakad.")] };
+    expect(validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), pune).findings[0]!.verdict).toBe("supported");
+  });
+
+  it("requires numbers and named places to match exactly", () => {
+    const pune = "A woman and her six-year-old son died after jumping from the 18th floor of a building in Pune's Wakad.";
+    const support = (claim: string) =>
+      validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), { ...base, claims: [claim], passages: [passage("P1", "S1", pune)] }).findings[0]!;
+    expect(support("A woman and her son jumped from the 25th floor of a building in Mumbai.").verdict).toBe("unresolved");
+    expect(support("A woman and her son jumped from the 25th floor of a building in Mumbai.").validationNotes.join(" ")).toMatch(/25th.*Mumbai|Mumbai.*25th/);
+    expect(support("A woman and her 6-year-old son died after jumping from the 18th floor of a building in Pune.").verdict).toBe("supported");
+  });
+
+  it("does not let 'relief' or 'bail' stand in for 'acquitted, all cases dropped'", () => {
+    const text = "The High Court granted relief to the former minister, staying his conviction and granting interim bail. An ED team then took him into custody.";
+    const ctx = { ...base, claims: ["The former minister has been acquitted with all cases dropped."], passages: [passage("P1", "S1", text)] };
+    const { findings } = validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), ctx);
+    expect(findings[0]!.verdict).toBe("unresolved");
+    expect(findings[0]!.validationNotes.join(" ")).toMatch(/acquitted/);
+    // The same outcome stated in the passage is fine.
+    const ok = { ...ctx, passages: [passage("P1", "S1", "The court acquitted him and all cases were dropped on Friday.")] };
+    expect(validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), ok).findings[0]!.verdict).toBe("supported");
+  });
+
+  it("does not let Wikipedia alone settle what a politician promised or said", () => {
+    const ctx = {
+      ...base,
+      claims: ["Amit Shah has promised a Uniform Civil Code for Uttar Pradesh."],
+      sources: [source("S1", { kind: "reference", publisher: "Wikipedia" })],
+      passages: [passage("P1", "S1", "Amit Shah promised that a Uniform Civil Code would be implemented in Uttar Pradesh.")],
+    };
+    const { findings } = validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), ctx);
+    expect(findings[0]!.verdict).toBe("unresolved");
+    expect(findings[0]!.validationNotes.join(" ")).toMatch(/Only Wikipedia/);
+  });
+
   it("classifies rule-flagged opinions as not fact-checkable and keeps evidence as context", () => {
     const ctx = { ...base, claims: ["This will be the best city in the world by 2040."], checkable: [false] };
     const { findings } = validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), ctx);
@@ -116,7 +159,7 @@ describe("validateAssessment", () => {
 });
 
 describe("overall label (derived in code)", () => {
-  const f = (verdict: "supported" | "contradicted" | "unresolved") => ({ id: "C1", claim: "c", verdict, headline: "h", explanation: "e", supportingPassageIds: [], contradictingPassageIds: [], contextPassageIds: [], limitations: [], missingEvidence: [], validationNotes: [], modelProposedVerdict: null });
+  const f = (verdict: "supported" | "contradicted" | "unresolved") => ({ id: "C1", claim: "c", verdict, headline: "h", explanation: "e", supportingPassageIds: [], contradictingPassageIds: [], contextPassageIds: [], limitations: [], missingEvidence: [], validationNotes: [], modelProposedVerdict: null, strength: null });
 
   it("is mixed when claims disagree", () => {
     expect(deriveOverall([f("supported"), f("contradicted")], "complete", [])).toBe("mixed");

@@ -51,3 +51,23 @@ Extra cases for Q&A:
 | Claim | Checked | Accessible evidence then | Expected limitation |
 |---|---|---|---|
 | Prime Minister Andy Burnham has agreed to pay financial reparations for the UK's role in the slave trade. | 31 Oct 2026 | BBC News, Al Jazeera: he ruled out reparations, open to an apology | Feeds keep recent items only; within weeks it may become *unresolved*. Not permanent ground truth. |
+
+## Indian political samples (live, checked 31 Oct 2026, ~22:00 IST)
+
+Built from that day's The Hindu, Indian Express, NDTV and Alt News headlines. Results can change
+as feeds move on; these are examples, not test ground truth.
+
+| Claim | Result then | Why |
+|---|---|---|
+| Azam Khan was detained by the ED right after he walked out of Rampur jail on bail. | 🟢 Supported | The Hindu |
+| Azam Khan has been acquitted and released from jail with all cases against him dropped. | 🟠 Not enough evidence | The model proposed *Supported*; the outcome guard downgraded it, because the passage says "relief / interim bail", not "acquitted" |
+| The INDIA bloc held a mock Parliament to 'impeach' Chief Election Commissioner Gyanesh Kumar. | 🟢 Supported | The Hindu, Indian Express, NDTV |
+| Amit Shah has promised a Uniform Civil Code for Uttar Pradesh if the BJP returns to power. | 🟠 Not enough evidence | Only Wikipedia supported it; Wikipedia can't settle what a politician promised |
+| Rahul Gandhi was sworn in as Prime Minister of India on Saturday. | 🟠 Not enough evidence | It was a mock-Parliament jibe; the model stayed cautious instead of choosing red |
+| Akhilesh Yadav wore a saffron turban at his press meet in Lucknow. | 🟠 Not enough evidence | Alt News says it was red; the model stayed cautious |
+| The BJP will win the 2027 Uttar Pradesh assembly election. | ⚪ Not fact-checkable | A prediction, labelled by rule with no model call |
+
+These runs found three over-confident *Supported* labels before the guards were added: an
+acquittal misread, a Wikipedia-only political promise, and an election prediction. They also
+show `qwen3:4b`'s main weakness: twisted political claims tend to come back amber rather than
+red, even when the evidence contradicts them.

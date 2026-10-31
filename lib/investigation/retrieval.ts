@@ -20,13 +20,13 @@ export type FetchedDocument = {
   access: "full_text" | "snippet_only" | "blocked" | "failed";
   accessNote: string | null;
   provider: string;
-  kind: "news_article" | "reference" | "fact_check" | "web_page" | "user_submitted";
+  kind: "news_article" | "reference" | "fact_check" | "web_page" | "user_submitted" | "social";
   links: string[];
   attributions: string[];
   revisionId: string | null;
   factCheck: Lead["factCheck"] | null;
   /** Text the passages are drawn from is the body (full_text) or a snippet/feed excerpt. */
-  textKind: "article_body" | "search_snippet" | "feed_excerpt";
+  textKind: "article_body" | "search_snippet" | "feed_excerpt" | "social_post";
   contentHash: string | null;
   fromCache: boolean;
 };
@@ -64,7 +64,7 @@ export function snippetDocument(lead: Lead, access: FetchedDocument["access"], n
     attributions: [],
     revisionId: lead.revisionId ?? null,
     factCheck: lead.factCheck ?? null,
-    textKind: lead.provider === "rss" ? "feed_excerpt" : "search_snippet",
+    textKind: lead.kind === "social" ? "social_post" : lead.provider === "rss" ? "feed_excerpt" : "search_snippet",
     contentHash: null,
     fromCache: false,
   };
@@ -97,6 +97,8 @@ export const liveDocumentSource: DocumentSource = {
         fromCache: false,
       };
     }
+    // Social posts are leads only: the post text from the API is kept; the page is not fetched.
+    if (lead.kind === "social") return snippetDocument(lead, "snippet_only", "Public social-media post — low reliability. Shown as a lead, never counted as evidence.");
     const key = canonicalizeUrl(lead.url);
     const cached = await cacheGet<CachedDoc>("documents", key, { allowStale: true });
     if (cached && !cached.stale && !revalidate) {

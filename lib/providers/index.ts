@@ -3,12 +3,13 @@ import type { Mode, ProviderStatus } from "@/lib/contracts";
 import { braveProvider } from "./brave";
 import { demoProvider } from "./demo";
 import { gdeltProvider } from "./gdelt";
+import { mastodonProvider } from "./mastodon";
 import { googleFactCheckProvider } from "./google-fact-check";
 import { rssProvider } from "./rss";
 import type { Provider } from "./types";
 import { wikipediaProvider } from "./wikipedia";
 
-const LIVE: Provider[] = [rssProvider, wikipediaProvider, gdeltProvider, braveProvider, googleFactCheckProvider];
+const LIVE: Provider[] = [rssProvider, wikipediaProvider, gdeltProvider, mastodonProvider, braveProvider, googleFactCheckProvider];
 
 export function providersFor(mode: Mode): Provider[] {
   if (mode === "demo") return [demoProvider];

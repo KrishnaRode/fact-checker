@@ -24,6 +24,7 @@ export const SourceKindSchema = z.enum([
   "web_page",
   "user_submitted",
   "feed_item",
+  "social", // public social-media post: a lead only, never evidence for a verdict
 ]);
 
 export const SourceRecordSchema = z.object({
@@ -59,7 +60,7 @@ export const PassageSchema = z.object({
   text: z.string(),
   normalizedStart: z.number().int().nonnegative(),
   normalizedEnd: z.number().int().nonnegative(),
-  retrievalKind: z.enum(["article_body", "search_snippet", "feed_excerpt"]),
+  retrievalKind: z.enum(["article_body", "search_snippet", "feed_excerpt", "social_post"]),
   /** Passage is predominantly an attributed quotation (what someone said). */
   isQuotation: z.boolean(),
   /** Passage contains text addressed to AI systems ("ignore previous instructions…"). */
@@ -85,6 +86,21 @@ export const FindingSchema = z.object({
   validationNotes: z.array(z.string()),
   /** The label the model proposed, when validation changed it. */
   modelProposedVerdict: VerdictSchema.nullable(),
+  /**
+   * How strong the evidence behind a green/red/amber-context label is, worked out by code from
+   * independent origins, source type and conflicts. A labelled level with reasons — never a
+   * probability, and never a judgement of truth by itself.
+   */
+  strength: z
+    .object({
+      level: z.enum(["strong", "moderate", "thin"]),
+      independentOrigins: z.number().int(),
+      reports: z.number().int(),
+      socialMentions: z.number().int(),
+      reasons: z.array(z.string()),
+    })
+    .nullable()
+    .default(null),
 });
 export type Finding = z.infer<typeof FindingSchema>;
 
@@ -149,6 +165,8 @@ export const InvestigationResultSchema = z.object({
     providersAttempted: z.array(z.string()),
     providersSucceeded: z.array(z.string()),
     warnings: z.array(z.string()),
+    /** Keyword routing: detected places/topics and the topical feeds scanned for them. */
+    routing: z.object({ detected: z.string(), feeds: z.array(z.string()) }).default({ detected: "", feeds: [] }),
   }),
   graph: z.object({ nodes: z.array(GraphNodeSchema), edges: z.array(GraphEdgeSchema) }),
   model: z.string().nullable(),

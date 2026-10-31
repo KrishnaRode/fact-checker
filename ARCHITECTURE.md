@@ -40,6 +40,10 @@ validated before it is sent.
    - Relative dates are resolved against a visible reference date and timezone (Asia/Kolkata by
      default). They become shown assumptions; the claim text is never rewritten.
 2. **Retrieve.**
+   - Keyword routing ([`topics.ts`](lib/investigation/topics.ts)) is a deterministic lexicon with
+     no model call. It extracts places and topics and scores the `topicFeeds` catalog
+     (city 5, state 2, topic 3+, region 1). It picks ≤ 6 feeds (≤ 2 per publisher), fetched on
+     demand and cached per feed for 20 minutes.
    - Neutral queries: emotive framing is stripped, no "fake/hoax" terms, plus an entity-only query
      for context and conflicting coverage.
    - Fast providers gate the first fetch wave. Slow GDELT feeds a second wave only if it answers
@@ -47,6 +51,8 @@ validated before it is sent.
    - Leads are ranked by reciprocal-rank fusion of our title/snippet relevance and each
      provider's own rank. Domains are capped.
 3. **Extract and link.**
+   - Follow the story: relevant leads that couldn't be read trigger a re-search with their
+     headlines. Up to 3 other outlets are read, with the blocked domain excluded.
    - Bounded concurrent fetches, robots-aware, with conditional revalidation.
    - Readability + linkedom; publication/modification dates from JSON-LD and meta tags.
    - Follows one cited reference: cited by ≥ 2 sources, or a URL naming ≥ 2 distinctive claim
@@ -100,6 +106,37 @@ recorded and shown.
 - URLs and references to non-existent passages are scrubbed from model prose.
 - The overall label is derived in code. It is *mixed* if claims differ or any claim was left
   unchecked, and **null** unless the run is complete.
+
+## Evidence strength ([`strength.ts`](lib/investigation/strength.ts))
+
+The score is computed after validation, from the decisive eligible passages:
+
+| Factor | Points |
+|---|---|
+| Independent origin groups | min(3, count) |
+| An original (cited by others) or fact-check source | +1 |
+| Wikipedia-only | −1 |
+| Opposing eligible evidence | −1 |
+| Quotations only | −1 |
+
+A score of ≥ 3 is **strong**, 2 is **moderate**, and ≤ 1 is **thin**. The result is shown with
+its reasons. Social posts count as mentions only.
+
+## Social leads ([`mastodon.ts`](lib/providers/mastodon.ts))
+
+- Mastodon public hashtag timelines, using hashtags from the routed keywords.
+- Each post becomes a `social` source: snippet-only, with retrieval kind `social_post`. It is
+  never eligible for any label and can't use a fetch slot; at most 2 reach the model, labelled
+  low reliability.
+- Linked news URLs become ordinary leads (`social_link`).
+
+## Deadlines
+
+The budget, user cancellation and per-call timeouts use plain `AbortController`s and timers,
+not `AbortSignal.any` chains. Every slow step (planner, page fetches, model check, assessment) is
+raced against the run's abort signal (`raceAbort`). A step that ignores cancellation therefore
+cannot hold a run past its budget. This was the cause of an 88-second run against a 30 s
+budget, and probably the earlier 40-minute stall noted in BENCHMARKS.md.
 
 ## Provenance ([`provenance.ts`](lib/investigation/provenance.ts))
 

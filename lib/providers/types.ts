@@ -8,7 +8,7 @@ export type Lead = {
   publishedAt: string | null;
   snippet: string | null;
   provider: string;
-  kind: "news_article" | "reference" | "fact_check" | "web_page";
+  kind: "news_article" | "reference" | "fact_check" | "web_page" | "social";
   /** Providers that return the document text directly (Wikipedia API, demo corpus). */
   fullText?: string;
   revisionId?: string | null;
@@ -27,6 +27,10 @@ export type ProviderQuery = {
   signal: AbortSignal;
   /** Absolute epoch ms by which the provider must return. */
   deadline: number;
+  /** Topic/place feeds chosen by the router (lib/investigation/topics.ts), scanned on demand. */
+  feedIds?: string[];
+  /** Hashtags derived from the claim's keywords (social providers). */
+  hashtags?: string[];
 };
 
 export type ProviderCapability = {
