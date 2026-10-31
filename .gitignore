@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.next-verify/
+.data/
+.fact-checker-run/
+test-results/
+playwright-report/
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+next-env.d.ts
