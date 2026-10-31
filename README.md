@@ -44,8 +44,79 @@ Right-click any text on any page → **Fact-check**. The extension has two modes
 - **Evidence-only · no AI:** used otherwise. It runs fixed rules over public news, with
   separate, more careful labels.
 
-Build it with `npm run build:extension`, then *Load unpacked* `extension/dist` in
-`chrome://extensions`. Details: [extension/README.md](extension/README.md).
+### Add the extension to Chrome (local install)
+
+You need Google Chrome 116 or newer (also works in Edge, Brave and other Chromium browsers),
+plus Node.js for the one-time build.
+
+**1. Build it**
+
+```bash
+cd ~/Documents/fact-checker
+npm install                # first time only
+npm run build:extension    # creates extension/dist
+```
+
+You should see `Built extension v0.1.0 → extension/dist`.
+
+**2. Load it into Chrome**
+
+1. Open a new tab and go to `chrome://extensions`.
+2. Turn on **Developer mode** (toggle, top-right).
+3. Click **Load unpacked** (top-left).
+4. Select the folder `fact-checker/extension/dist`. Select the `dist` folder itself, not
+   `extension` or the project root; it must contain `manifest.json`.
+5. **Fact Checker** appears in the list with ID `jkccdjdinghdfoampelfceigjgkbkdfi`.
+
+**3. Pin it**
+
+Click the puzzle-piece icon in Chrome's toolbar, then the pin next to **Fact Checker**. The
+magnifier icon now sits in the toolbar.
+
+**4. Use it**
+
+- **Check text on any page:** select the text, right-click → **Fact-check "…"**. The side panel
+  opens and starts checking.
+- **Type or paste a claim:** click the toolbar icon to open the side panel, paste, press **Enter**.
+- **Mode chip** (top right of the panel):
+  - 🟢 **AI · local** means the Fact Checker app is running and does the assessment.
+  - 🟡 **Evidence-only · no AI** means the app isn't running; rules compare news reports instead.
+  - Click the chip to change the app address, force evidence-only mode, or re-check the
+    connection.
+
+**5. Turn on AI mode (optional)**
+
+Start the app in a terminal and leave it running:
+
+```bash
+cd ~/Documents/fact-checker && ./run.sh
+```
+
+Then click the mode chip → **Re-check connection**. It turns green. In AI mode,
+**Open full investigation** opens the same claim in the app with the evidence map and
+follow-up questions.
+
+**Updating after code changes**
+
+Run `npm run build:extension` again, then click the circular **reload** arrow on the Fact Checker
+card in `chrome://extensions`. Close and reopen the side panel. If you also changed the app,
+restart `./run.sh`.
+
+**Removing it:** click **Remove** on the card in `chrome://extensions`.
+
+**Troubleshooting**
+
+| Symptom | Fix |
+|---|---|
+| "Manifest file is missing or unreadable" | You selected the wrong folder. Choose `extension/dist`, after running `npm run build:extension`. |
+| No "Fact-check" item in the right-click menu | Text must be selected first. If it's still missing, reload the extension in `chrome://extensions`. |
+| Panel stays on **Evidence-only** while the app runs | Make sure `./run.sh` is running and http://127.0.0.1:3016 opens. Then mode chip → **Re-check connection**. If you changed the port, enter the address in the panel. Restart `./run.sh` if your copy of the app predates the extension (older versions reject the extension). |
+| AI mode says the model is missing | `ollama pull qwen3:4b`, then re-check. |
+| "Errors" button on the extension card | Click it to read the error, rebuild, and reload the extension. |
+| Chrome may warn about "developer mode extensions" | Normal for locally loaded extensions. Click the × to keep it, or publish it via the Chrome Web Store. |
+
+More detail on how each mode decides, privacy and permissions:
+[extension/README.md](extension/README.md).
 
 ## Local inference vs online retrieval
 
