@@ -13,6 +13,19 @@ leaves unresolved, with every citation clickable.
 It is not a truth oracle. Results are assessments *as of the time checked*, within the sources
 searched. The tool cannot certify truth, judge intent or guarantee accuracy.
 
+![A forward checked: contradicted by the original notice, with evidence strength and the exact quote](docs/screenshots/03-verdict.png)
+
+**Contents:**
+[Quick start](#quick-start) ·
+[A look around](#a-look-around) ·
+[Chrome extension](#chrome-extension) ·
+[Add the extension to Chrome](#add-the-extension-to-chrome-local-install) ·
+[How it works](#how-it-works) ·
+[Sources](#sources-and-coverage) ·
+[Reading a verdict](#reading-a-verdict) ·
+[Checks](#checks) ·
+[Troubleshooting](#troubleshooting)
+
 ## Quick start
 
 ```bash
@@ -36,6 +49,31 @@ npm run build && npm start        # or: npm run dev
 ```
 
 There is no Docker, login or cloud account.
+
+![Home: one large composer, three labelled samples](docs/screenshots/01-home.png)
+
+## A look around
+
+**1. Paste a claim, forward or news link and press Enter.** The investigation streams real
+events: which sources were read, which copies of one story were grouped, and the original source
+it found.
+
+![Live investigation activity](docs/screenshots/02-investigating.png)
+
+**2. Click any quote (P1, P2…)** to see the exact text, where it sits in the article, its dates,
+and how independent the source is.
+
+![Evidence inspector showing the exact passage](docs/screenshots/04-evidence-inspector.png)
+
+**3. Open "Evidence map & sources"** to see which quote supports or contradicts the claim, and
+which sources are copies of one story (origin group G1).
+
+![Evidence map with grouped copies](docs/screenshots/05-evidence-map.png)
+
+You can then ask a follow-up ("What was changed in the forward?"), use **Investigate further**
+for a longer search, **Refresh**, or export Markdown or JSON. Try it without the internet in
+**Demo mode** (Settings → Evidence mode): a fictional town with bundled sources. See
+[DEMO.md](DEMO.md).
 
 ## Chrome extension
 
@@ -69,6 +107,8 @@ You should see `Built extension v0.1.0 → extension/dist`.
    `extension` or the project root; it must contain `manifest.json`.
 5. **Fact Checker** appears in the list with ID `jkccdjdinghdfoampelfceigjgkbkdfi`.
 
+![chrome://extensions with Developer mode on and Fact Checker loaded](docs/screenshots/12-chrome-extensions-page.png)
+
 **3. Pin it**
 
 Click the puzzle-piece icon in Chrome's toolbar, then the pin next to **Fact Checker**. The
@@ -84,6 +124,28 @@ magnifier icon now sits in the toolbar.
   - 🟡 **Evidence-only · no AI** means the app isn't running; rules compare news reports instead.
   - Click the chip to change the app address, force evidence-only mode, or re-check the
     connection.
+
+| AI · local (app running) | No AI: same details found | No AI: report says the opposite |
+|---|---|---|
+| ![AI mode in the side panel](docs/screenshots/08-extension-ai-mode.png) | ![Evidence-only mode: same details in independent reports](docs/screenshots/09-extension-no-ai-same-details.png) | ![Evidence-only mode: reports say the opposite](docs/screenshots/10-extension-no-ai-opposite.png) |
+
+**No-AI mode labels:**
+
+| Label | Meaning |
+|---|---|
+| 🟢 Same details in independent reports | Readable reports contain the claim's names, numbers, places and outcomes, with no opposite wording |
+| 🔴 Reports say the opposite | A report says "not permanently", "without rain", "for 15 days", "B beat A"… The conflicting words are shown |
+| 🔴 A fact-checker disputes a similar claim | Alt News or FactCheck.org has published on it |
+| 🟠 Reports differ on details | Same event, but different numbers or places ("does not state: 25th, Mumbai") |
+| 🟠 Same topic — read carefully | Speculation, a stated price against a "free" claim, an old or undated report for a "today" claim, or only Wikipedia |
+| 🟠 Reports conflict / mention a denial | Mixed coverage. Read both sides |
+| ⚪ No matching coverage found | Nothing in range. **Not** evidence that the claim is false |
+
+**Settings and the local news index:** click the mode chip. The extension keeps a 14-day index of
+all 55 feeds, refreshed every 30 minutes while Chrome is open. You can see its status, press
+**Update now**, or allow reading articles from any news site (needed for some GDELT results).
+
+<img src="docs/screenshots/11-extension-settings.png" alt="Extension settings: mode, app address, local news index" width="320">
 
 **5. Turn on AI mode (optional)**
 
@@ -129,6 +191,10 @@ With the app running, open **http://127.0.0.1:3016/how-it-works**. It shows:
   **Check all feeds now** button;
 - the search services, and the sources evaluated and *not* used, with reasons.
 
+![How it works: the pipeline, each step marked Code or Local AI](docs/screenshots/06-how-it-works.png)
+
+![Live status of every source](docs/screenshots/07-live-sources.png)
+
 In short:
 1. Code finds and reads the evidence from a fixed list of publishers' official feeds.
 2. The local AI reads the quotes and proposes a label.
@@ -160,9 +226,15 @@ mode) uses a bundled, fictional corpus with no network access. It is always labe
 ## Sources and coverage
 
 **Core (no keys needed) → "Selected-source coverage"**
-- **Selected news feeds:** 11 public RSS/Atom feeds (BBC ×2, The Hindu, Indian Express, Mint,
-  NDTV, Guardian, NPR, Al Jazeera, Alt News, FactCheck.org). All were verified reachable on
-  31 Oct 2026. Recent items only, kept in a bounded local index refreshed every 20 minutes.
+- **News feeds:** 55 official RSS/Atom feeds from 11 news publishers and 2 fact-checkers, all
+  verified on 31 Oct – 1 Nov 2026:
+  - **14 general feeds, read for every check:** BBC ×2, The Hindu, Indian Express ×2, HT India,
+    News18, Mint, NDTV, Guardian World, NPR, Al Jazeera, Alt News, FactCheck.org.
+  - **41 city and topic feeds:** TOI, HT and IE city feeds (Pune, Mumbai, Delhi, Bengaluru,
+    Hyderabad, Chennai, Kolkata), plus tech, business, health, science, education, sports and
+    faith sections. These are chosen per claim (see keyword routing below).
+  - The full list with live status is at `/how-it-works`.
+  - Recent items only; the app keeps a bounded index refreshed every 20 minutes.
 - **Wikipedia** (MediaWiki API): background and entities, with revision ids. It is never the sole
   authority for breaking or contested claims.
 - **GDELT DOC API:** worldwide news discovery. It is slow (11–17 s measured) and rate-limited
@@ -224,6 +296,16 @@ labels. Code works it out; the model doesn't:
 
 It is a labelled level with its reasons, not a probability and not a trust score for any outlet.
 
+**Opposite wording overrules the model.** The code looks for explicit opposites in what it read:
+- "*not* closing permanently", "*without* rain";
+- "temporary" vs "permanent", "below the limit" vs "dangerous";
+- "interim bail" vs "acquitted";
+- who beat whom ("Australia lost the series to South Africa").
+
+If a readable passage says the opposite of the claim, the label becomes **Contradicted** (citing
+that passage), even when the model said "supported". If only a source's headline says the
+opposite, a green label is blocked.
+
 Green and red require cited, readable full-text evidence. The server checks this; the model's
 proposal alone is not enough. A label changed by these checks shows *"The local model proposed …;
 the evidence checks changed it."* Copies of one story count as **one** line of evidence. A quoted
@@ -246,10 +328,11 @@ statement shows that something was said, not that it is true.
 ## Checks
 
 ```bash
-npm run typecheck && npm run lint && npm test         # 99 unit/integration tests
-NEXT_DIST_DIR=.next-verify npm run build && npm run test:e2e   # 7 Playwright flows (real model)
+npm run typecheck && npm run lint && npm test         # 141 unit/integration tests
+NEXT_DIST_DIR=.next-verify npm run build && npm run test:e2e   # 12 Playwright flows: 8 app + 4 extension (real model)
 npm run eval:fixtures                                  # semantic quality vs reviewed fixtures (needs Ollama)
 npm run benchmark -- --base http://127.0.0.1:3016 --runs 3 --cold
+node scripts/screenshots.mjs                           # regenerate README screenshots (see the script header)
 ```
 
 ## Troubleshooting
@@ -271,8 +354,12 @@ npm run benchmark -- --base http://127.0.0.1:3016 --runs 3 --cold
   8/8 cases, and exactly matched 6/8. It tends to choose *Not enough evidence* where a reviewer
   chose *Misleading context* or *Contradicted*. Validation stops it from issuing unsupported
   green/red labels, but it cannot prove the model read a passage correctly.
-- For twisted political claims, `qwen3:4b` often answers *Not enough evidence* where the evidence
-  actually contradicts the claim (see DEMO.md). Guards stop false greens; they cannot create reds.
+- For twisted claims, `qwen3:4b` often answers *Not enough evidence* where the evidence
+  contradicts the claim. The opposite-wording rules now turn many of these into **Contradicted**
+  (with the quote), but only for the patterns they know: negation, listed antonyms, results,
+  prices. Other rewordings stay amber.
+- Live examples age out. Feeds list recent items only, so claims about older news drift toward
+  *Not enough evidence*.
 - Latency depends heavily on the machine; see [BENCHMARKS.md](BENCHMARKS.md).
 - English only. No image, video or deepfake analysis. No social-network ingestion.
 

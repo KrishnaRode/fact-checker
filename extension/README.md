@@ -2,6 +2,12 @@
 
 Right-click any text → **Fact-check "…"**. The side panel checks it against the news.
 
+| AI · local | No AI: same details | No AI: says the opposite |
+|---|---|---|
+| ![AI mode](../docs/screenshots/08-extension-ai-mode.png) | ![Same details](../docs/screenshots/09-extension-no-ai-same-details.png) | ![Opposite](../docs/screenshots/10-extension-no-ai-opposite.png) |
+
+Step-by-step install with screenshots: [main README → Add the extension to Chrome](../README.md#add-the-extension-to-chrome-local-install).
+
 ## Two modes, chosen automatically
 
 | | **AI · local** (A) | **Evidence-only · no AI** (C) |
