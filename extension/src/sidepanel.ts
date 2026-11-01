@@ -94,6 +94,8 @@ async function detectModeNow() {
     aiReason = "You chose evidence-only mode.";
   }
   modeEl.dataset.mode = aiReady ? "ai" : "rules";
+  // With the app running, link to its live How-it-works page; otherwise to the published docs.
+  $<HTMLAnchorElement>("how-link").href = aiReady ? `${appUrl}/how-it-works` : "https://github.com/KrishnaRode/fact-checker#how-it-works";
   modeLabel.textContent = aiReady ? (DEMO ? "AI · local · demo" : "AI · local") : "Evidence-only · no AI";
   $("mode-explain").textContent = aiReady
     ? "AI mode: your claim is checked by the Fact Checker app on this computer, using a local open-weight model. Nothing goes to a cloud AI."

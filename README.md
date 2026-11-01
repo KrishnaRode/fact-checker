@@ -119,6 +119,22 @@ restart `./run.sh`.
 More detail on how each mode decides, privacy and permissions:
 [extension/README.md](extension/README.md).
 
+## How it works
+
+With the app running, open **http://127.0.0.1:3016/how-it-works**. It shows:
+- the step-by-step pipeline, each step marked **Code** or **Local AI**;
+- what the AI does and doesn't do, and the checks that overrule it;
+- a **live table of every source** (55 feeds from 11 news publishers and 2 fact-checkers):
+  whether each is answering, how many headlines it holds, and its newest item, with a
+  **Check all feeds now** button;
+- the search services, and the sources evaluated and *not* used, with reasons.
+
+In short:
+1. Code finds and reads the evidence from a fixed list of publishers' official feeds.
+2. The local AI reads the quotes and proposes a label.
+3. Code verifies every quote and applies the evidence rules. It can overrule the AI.
+4. Code decides the final verdict.
+
 ## Local inference vs online retrieval
 
 | | Where it runs |

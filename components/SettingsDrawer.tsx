@@ -161,6 +161,9 @@ export function SettingsDrawer({ open, onClose, health, onRefreshHealth, mode, o
               {appConfig.name} · {seriesLabel}
             </p>
             <p>{appConfig.seriesLine} Built by {appConfig.owner}.</p>
+            <p className="mt-2">
+              <a href="/how-it-works" className="text-accent-strong hover:text-text">How it works, every source, and the AI&apos;s role →</a>
+            </p>
             <p className="mt-2">Fact Checker gives evidence-linked assessments as of the time checked. It cannot certify truth, judge intent or guarantee accuracy.</p>
           </section>
         </div>

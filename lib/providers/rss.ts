@@ -82,12 +82,12 @@ export function clearFeedMemory(): void {
 const topicMemory = new Map<string, { at: number; entries: FeedEntry[] }>();
 const topicInflight = new Map<string, Promise<FeedEntry[]>>();
 
-async function topicFeedEntries(id: string, signal: AbortSignal, timeoutMs: number): Promise<FeedEntry[]> {
+async function topicFeedEntries(id: string, signal: AbortSignal, timeoutMs: number, force = false): Promise<FeedEntry[]> {
   const feed = topicFeeds.find((f) => f.id === id);
   if (!feed) return [];
   const mem = topicMemory.get(id);
-  if (mem && Date.now() - mem.at < cachePolicy.feedIndexTtlMs) return mem.entries;
-  const disk = await cacheGet<FeedEntry[]>("feeds", `topic:${id}`);
+  if (!force && mem && Date.now() - mem.at < cachePolicy.feedIndexTtlMs) return mem.entries;
+  const disk = force ? null : await cacheGet<FeedEntry[]>("feeds", `topic:${id}`);
   if (disk) {
     topicMemory.set(id, { at: disk.storedAt, entries: disk.value });
     return disk.value;
@@ -109,6 +109,75 @@ async function topicFeedEntries(id: string, signal: AbortSignal, timeoutMs: numb
   })();
   topicInflight.set(id, p);
   return p;
+}
+
+export type FeedStatus = {
+  id: string;
+  publisher: string;
+  url: string;
+  tags: readonly string[];
+  kind: "general" | "topic";
+  state: "ok" | "failing" | "not_fetched";
+  items: number;
+  newest: string | null;
+  checkedAt: string | null;
+  note: string | null;
+};
+
+const newestOf = (es: FeedEntry[]) => es.map((e) => e.publishedAt).filter((d): d is string => !!d).sort().at(-1) ?? null;
+
+/** Live health of every configured feed, for the How-it-works page. */
+export async function feedStatuses(): Promise<FeedStatus[]> {
+  const idx = await loadIndex();
+  const general: FeedStatus[] = feeds.map((f) => {
+    const es = idx?.entries.filter((e) => e.feedId === f.id) ?? [];
+    const fail = idx?.failures[f.id];
+    return {
+      id: f.id,
+      publisher: f.publisher,
+      url: f.url,
+      tags: [],
+      kind: "general",
+      state: fail ? "failing" : es.length ? "ok" : "not_fetched",
+      items: es.length,
+      newest: newestOf(es),
+      checkedAt: idx?.refreshedAt && es.length ? idx.refreshedAt : fail ? new Date(fail.at).toISOString() : null,
+      note: fail ? fail.message : null,
+    };
+  });
+  const topic: FeedStatus[] = await Promise.all(
+    topicFeeds.map(async (f) => {
+      const mem = topicMemory.get(f.id) ?? (await cacheGet<FeedEntry[]>("feeds", `topic:${f.id}`, { allowStale: true }).then((h) => (h ? { at: h.storedAt, entries: h.value } : undefined)));
+      return {
+        id: f.id,
+        publisher: f.publisher,
+        url: f.url,
+        tags: f.tags,
+        kind: "topic" as const,
+        state: mem ? (mem.entries.length ? "ok" : "failing") : "not_fetched",
+        items: mem?.entries.length ?? 0,
+        newest: mem ? newestOf(mem.entries) : null,
+        checkedAt: mem ? new Date(mem.at).toISOString() : null,
+        note: mem ? (mem.entries.length ? null : "No items returned") : "Fetched on demand when a claim matches its tags",
+      };
+    }),
+  );
+  return [...general, ...topic];
+}
+
+/** Fetch every feed once (general index + all topic feeds), bounded to 8 at a time. */
+export async function checkAllFeeds(): Promise<void> {
+  const signal = AbortSignal.timeout(30_000);
+  await refreshFeedIndex(signal).catch(() => undefined);
+  const queue = topicFeeds.map((f) => f.id);
+  await Promise.all(
+    Array.from({ length: 8 }, async () => {
+      for (let id = queue.shift(); id; id = queue.shift()) {
+        topicMemory.delete(id);
+        await topicFeedEntries(id, signal, 8_000, true).catch(() => []);
+      }
+    }),
+  );
 }
 
 export async function feedIndexInfo(): Promise<{ entries: number; refreshedAt: string | null; failing: string[] }> {

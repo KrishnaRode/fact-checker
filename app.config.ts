@@ -178,6 +178,21 @@ export const topicFeeds: readonly { id: string; publisher: string; url: string; 
   { id: "hindu-religion", publisher: "The Hindu", url: "https://www.thehindu.com/society/faith/feeder/default.rss", tags: ["topic:religion"] },
 ];
 
+/** Sources that were evaluated and deliberately NOT used (checked 31 Oct – 1 Nov 2026). */
+export const excludedSources: readonly { name: string; reason: string }[] = [
+  { name: "PIB (Press Information Bureau) feed", reason: "Feed returned 403 Forbidden when tested." },
+  { name: "AP News feed", reason: "Feed returned 403 Forbidden when tested." },
+  { name: "PolitiFact, BOOM Live feeds", reason: "Feed URLs returned 404 when tested." },
+  { name: "News18 Politics feed", reason: "Returned 403 Forbidden when tested." },
+  { name: "TOI Technology feed", reason: "Stale — newest item was weeks old." },
+  { name: "HT Bengaluru feed", reason: "Nearly empty (one item)." },
+  { name: "Reddit", reason: "robots.txt disallows all bots and the API returned 403." },
+  { name: "Bluesky public search", reason: "Returned 403 Forbidden." },
+  { name: "YouTube channel feeds (NDTV, Aaj Tak, India Today…)", reason: "robots.txt disallows automated reading of /feeds/videos.xml." },
+  { name: "X (Twitter), Facebook, Instagram, WhatsApp", reason: "Require a login or a paid API." },
+  { name: "Google / Bing search result pages", reason: "Scraping consumer search engines is against their terms and this project's rules." },
+];
+
 /** "The Sunday Builds #17" — derived so the number is set in exactly one place. */
 export const seriesLabel = `${appConfig.series}${appConfig.buildNumber != null ? ` #${appConfig.buildNumber}` : ""}`;
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { appConfig, seriesLabel } from "@/app.config";
@@ -121,7 +122,12 @@ export function FactChecker() {
           <span className="text-[16px] font-semibold tracking-tight text-text">{appConfig.name}</span>
           <span className="hidden rounded-full border border-border px-2 py-0.5 text-[11.5px] text-text-faint sm:inline">{seriesLabel}</span>
         </button>
-        <ConnectionStatus health={health} mode={mode} onOpen={() => setSettingsOpen(true)} />
+        <div className="flex min-w-0 items-center gap-3">
+          <Link href="/how-it-works" className="hidden text-[13px] text-text-muted hover:text-text sm:inline">
+            How it works
+          </Link>
+          <ConnectionStatus health={health} mode={mode} onOpen={() => setSettingsOpen(true)} />
+        </div>
       </header>
 
       <main className="flex flex-1 flex-col">
@@ -258,7 +264,9 @@ export function FactChecker() {
         <span>
           {seriesLabel} · {appConfig.seriesLine}
         </span>
-        <span>Built by {appConfig.owner} · local AI via Ollama</span>
+        <span>
+          <Link href="/how-it-works" className="hover:text-text">How it works &amp; sources</Link> · Built by {appConfig.owner} · local AI via Ollama
+        </span>
       </footer>
 
       {result && <EvidenceInspector result={result} selection={selection} onClose={() => setSelection(null)} onSelect={setSelection} />}
