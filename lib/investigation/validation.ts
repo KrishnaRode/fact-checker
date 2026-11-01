@@ -165,6 +165,26 @@ export function validateAssessment(model: ModelAssessment, ctx: ValidationContex
     const eligible = (ids: string[]) => ids.filter((pid) => isFullText(pid) && !isSelf(pid));
 
     let verdict: Verdict = proposed.verdict;
+    /** First readable, eligible passage (cited or not) whose sentences say the opposite of the claim. */
+    const opposingPassage = (i: number): { pid: string; o: ReturnType<typeof findOpposites>[number] } | null => {
+      const all = ctx.passages.map((p) => p.id).filter(isFullText).filter((pid) => !isSelf(pid));
+      for (const pid of all) {
+        const o = findOpposites(ctx.claims[i]!, splitSentences(passages.get(pid)!.text)).find((x) => x.kind !== "price");
+        if (o) return { pid, o };
+      }
+      return null;
+    };
+    /** A readable source's headline saying the opposite (blocks green; a headline alone never makes red). */
+    const opposingHeadline = (i: number) => {
+      for (const s of ctx.sources) {
+        if (s.access !== "full_text" || s.kind === "user_submitted" || s.kind === "social" || s.id === ctx.submittedSourceId) continue;
+        // Headlines are short: only explicit negation or a who-beat-whom flip counts, never
+        // antonym-by-absence (a "shut until 2 Nov" headline does not contradict "reopens 3 Nov").
+        const o = findOpposites(ctx.claims[i]!, [s.title]).find((x) => x.kind === "negated" || x.claimWord.includes(" beat "));
+        if (o) return { s, o };
+      }
+      return null;
+    };
     const downgrade = (why: string) => {
       notes.push(why);
       verdict = "unresolved";
@@ -189,9 +209,16 @@ export function validateAssessment(model: ModelAssessment, ctx: ValidationContex
               ? "The supporting citations were search snippets or feed summaries, not readable article text."
               : "The model proposed “supported” without citing a supporting passage.",
         );
-      } else if (findOpposites(ctx.claims[index]!, ok.flatMap((pid) => splitSentences(passages.get(pid)!.text))).some((o) => o.kind !== "price")) {
-        const o = findOpposites(ctx.claims[index]!, ok.flatMap((pid) => splitSentences(passages.get(pid)!.text))).find((x) => x.kind !== "price")!;
-        downgrade(`The cited passage says the opposite of the claim: the claim says “${o.claimWord}”, the passage says “${o.reportWords}”.`);
+      } else if (opposingPassage(index)) {
+        // Explicit opposite wording in readable evidence: the label follows the evidence.
+        const { pid, o } = opposingPassage(index)!;
+        notes.push(`Decided by the opposite-wording check, overriding the model's “supported”: the claim says “${o.claimWord}”, ${pid} says “${o.reportWords}”.`);
+        verdict = "contradicted";
+        context.push(...support.splice(0).filter((x) => x !== pid));
+        if (!contra.includes(pid)) contra.unshift(pid);
+      } else if (opposingHeadline(index)) {
+        const { s, o } = opposingHeadline(index)!;
+        downgrade(`The headline of ${s.publisher ?? s.id} says the opposite: “${s.title}” (the claim says “${o.claimWord}”, the headline says “${o.reportWords}”).`);
       } else if (mismatchedSpecifics(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text)).length) {
         downgrade(`Specific details in the claim (${mismatchedSpecifics(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text)).slice(0, 4).join(", ")}) do not appear in the supporting passages, so they may describe a different event or different facts.`);
       } else if (uncoveredClaimTerms(ctx.claims[index]!, ok.map((pid) => passages.get(pid)!.text)).ratio < 0.6) {

@@ -105,11 +105,30 @@ describe("validateAssessment", () => {
     expect(validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), pune).findings[0]!.verdict).toBe("supported");
   });
 
-  it("downgrades a 'supported' label when the cited passage says the opposite", () => {
-    const ctx = { ...base, claims: ["The Riverbend Museum has shut down permanently."], passages: [passage("P1", "S1", "This is a temporary closure for maintenance. The Riverbend Museum is not closing permanently.")] };
+  it("turns a wrong 'supported' into 'contradicted' when readable evidence says the opposite — cited or not", () => {
+    const ctx = {
+      ...base,
+      claims: ["UK weather alert: 10 days of non-stop rain coming after the wettest week."],
+      sources: [source("S1"), source("S2")],
+      passages: [passage("P1", "S1", "The UK had its wettest week in two years."), passage("P2", "S2", "The UK could see 10 days without rain after the wettest week in two years.")],
+    };
+    const { findings } = validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), ctx);
+    expect(findings[0]!.verdict).toBe("contradicted");
+    expect(findings[0]!.contradictingPassageIds).toEqual(["P2"]);
+    expect(findings[0]!.modelProposedVerdict).toBe("supported");
+    expect(findings[0]!.validationNotes.join(" ")).toMatch(/opposite-wording check.*without rain/);
+  });
+
+  it("blocks a green label when a readable source's headline says the opposite (headline alone never makes red)", () => {
+    const ctx = {
+      ...base,
+      claims: ["UK weather alert: 10 days of non-stop rain coming after the wettest week."],
+      sources: [source("S1", { title: "UK weather: 10 days without rain after 'wettest week in two years'" })],
+      passages: [passage("P1", "S1", "Both systems delivered much-needed rainfall after the wettest week in the UK.")],
+    };
     const { findings } = validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), ctx);
     expect(findings[0]!.verdict).toBe("unresolved");
-    expect(findings[0]!.validationNotes.join(" ")).toMatch(/opposite.*permanently/);
+    expect(findings[0]!.validationNotes.join(" ")).toMatch(/headline.*without rain/);
   });
 
   it("requires numbers and named places to match exactly", () => {
@@ -129,7 +148,8 @@ describe("validateAssessment", () => {
     const text = "The High Court granted relief to the former minister, staying his conviction and granting interim bail. An ED team then took him into custody.";
     const ctx = { ...base, claims: ["The former minister has been acquitted with all cases dropped."], passages: [passage("P1", "S1", text)] };
     const { findings } = validateAssessment(assessment([{ verdict: "supported", evidence: [{ passage_id: "P1", stance: "supports" }] }]), ctx);
-    expect(findings[0]!.verdict).toBe("unresolved");
+    // "Interim bail / conviction stayed / custody" is the opposite of "acquitted": contradicted.
+    expect(findings[0]!.verdict).toBe("contradicted");
     expect(findings[0]!.validationNotes.join(" ")).toMatch(/acquitted/);
     // The same outcome stated in the passage is fine.
     const ok = { ...ctx, passages: [passage("P1", "S1", "The court acquitted him and all cases were dropped on Friday.")] };
