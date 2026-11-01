@@ -69,3 +69,25 @@ test("a right-click handoff (pending claim) fills the panel and starts a check",
   await expect(page.locator("#claim")).toHaveValue("Kestrel Bay will be the best city in the world by 2040.");
   await expect(page.locator("#result .label")).toContainText("Opinion or prediction", { timeout: 60_000 });
 });
+
+test("the background worker builds the local 14-day index from the feeds", async () => {
+  test.setTimeout(120_000);
+  const page = await panel();
+  // Ask the service worker to refresh, as the panel's "Update now" does.
+  const res = await page.evaluate(() => chrome.runtime.sendMessage({ type: "refresh-index" }));
+  expect(res.total).toBe(55);
+  expect(res.ok).toBeGreaterThan(40);
+  const count = await page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const req = indexedDB.open("fact-checker-index");
+        req.onsuccess = () => {
+          const c = req.result.transaction("items").objectStore("items").count();
+          c.onsuccess = () => resolve(c.result);
+        };
+      }),
+  );
+  expect(count).toBeGreaterThan(1_000);
+  await page.locator("#mode").click();
+  await expect(page.locator("#index-status")).toContainText("headlines from the last 14 days");
+});

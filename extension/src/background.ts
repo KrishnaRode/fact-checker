@@ -1,13 +1,36 @@
+import { refreshIndex } from "./refresh";
+
 /**
- * Service worker: a right-click "Fact-check this" on selected text, and the toolbar button,
- * both open the side panel. The selection is passed through session storage (never sent
- * anywhere until the user presses Investigate in the panel).
+ * Service worker:
+ *  - right-click "Fact-check this" and the toolbar button open the side panel; the selection is
+ *    handed over through session storage (nothing is sent until the user checks it);
+ *  - keeps the local 14-day news index fresh: on install/startup and every 30 minutes.
  */
 const MENU_ID = "fact-check-selection";
+const ALARM = "refresh-index";
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({ id: MENU_ID, title: "Fact-check “%s”", contexts: ["selection"] });
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  void chrome.alarms.create(ALARM, { periodInMinutes: 30, delayInMinutes: 30 });
+  void refreshIndex();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  void chrome.alarms.create(ALARM, { periodInMinutes: 30 });
+  void refreshIndex();
+});
+
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name === ALARM) void refreshIndex();
+});
+
+chrome.runtime.onMessage.addListener((msg: { type?: string }, _sender, reply) => {
+  if (msg?.type === "refresh-index") {
+    refreshIndex().then(reply, () => reply(null));
+    return true; // async reply
+  }
+  return false;
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {

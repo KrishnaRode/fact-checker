@@ -1,19 +1,16 @@
+import { parseFeed } from "@/lib/providers/feed-parse";
+
 /**
  * Evidence-only retrieval inside the extension: fetch public RSS/Atom feeds and article pages
  * with the browser's own fetch (host permissions are limited to the listed news publishers),
  * parse with DOMParser, never execute page scripts. Feed results are cached in session storage
  * for 20 minutes so repeated checks stay fast.
  */
-export type FeedItem = { url: string; title: string; summary: string; publishedAt: string | null; publisher: string; feedId: string };
+export type { FeedEntry as FeedItem } from "@/lib/providers/feed-parse";
+import type { FeedEntry as FeedItem } from "@/lib/providers/feed-parse";
 export type Article = { url: string; title: string; publisher: string; publishedAt: string | null; text: string; links: string[]; readable: boolean; note: string | null };
 
 const FEED_TTL_MS = 20 * 60 * 1000;
-
-function clean(s: string | null | undefined): string {
-  if (!s) return "";
-  const doc = new DOMParser().parseFromString(`<body>${s}</body>`, "text/html");
-  return (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
-}
 
 function iso(s: string | null | undefined): string | null {
   if (!s) return null;
@@ -21,21 +18,8 @@ function iso(s: string | null | undefined): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-export function parseFeedXml(xml: string, feed: { id: string; publisher: string }): FeedItem[] {
-  const doc = new DOMParser().parseFromString(xml, "text/xml");
-  const nodes = [...doc.querySelectorAll("item"), ...doc.querySelectorAll("entry")].slice(0, 120);
-  const out: FeedItem[] = [];
-  for (const n of nodes) {
-    const get = (sel: string) => n.querySelector(sel)?.textContent?.trim() ?? "";
-    let link = get("link");
-    if (!link) link = n.querySelector("link[rel='alternate'], link")?.getAttribute("href") ?? get("guid");
-    if (!/^https?:\/\//.test(link)) continue;
-    const title = clean(get("title"));
-    if (!title) continue;
-    out.push({ url: link.trim(), title, summary: clean(get("description") || get("summary") || get("content")).slice(0, 600), publishedAt: iso(get("pubDate") || get("published") || get("updated")), publisher: feed.publisher, feedId: feed.id });
-  }
-  return out;
-}
+/** Shared, DOM-free parser (the same one the app server uses). */
+export const parseFeedXml = parseFeed;
 
 async function timedFetch(url: string, ms: number, signal: AbortSignal): Promise<Response> {
   const ctrl = new AbortController();

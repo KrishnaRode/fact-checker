@@ -29,7 +29,7 @@ domains.add("ndtv.com"); // NDTV's feeds are served by feedburner.com
 domains.add("bbc.com");
 domains.add("bbc.co.uk");
 domains.add("npr.org");
-const hostPermissions = ["http://127.0.0.1/*", "http://localhost/*", ...[...domains].sort().map((d) => `https://*.${d}/*`)];
+const hostPermissions = ["http://127.0.0.1/*", "http://localhost/*", "https://api.gdeltproject.org/*", "https://en.wikipedia.org/*", ...[...domains].sort().map((d) => `https://*.${d}/*`)];
 
 const manifest = {
   manifest_version: 3,
@@ -43,8 +43,10 @@ const manifest = {
   action: { default_title: "Fact Checker", default_icon: { 16: "icons/icon-16.png", 48: "icons/icon-48.png" } },
   side_panel: { default_path: "sidepanel.html" },
   background: { service_worker: "background.js", type: "module" },
-  permissions: ["contextMenus", "sidePanel", "storage"],
+  permissions: ["contextMenus", "sidePanel", "storage", "alarms"],
   host_permissions: hostPermissions,
+  // Asked for only when the user opts in (to read articles GDELT finds on other news sites).
+  optional_host_permissions: ["https://*/*"],
   content_security_policy: { extension_pages: "script-src 'self'; object-src 'none'" },
 };
 

@@ -15,7 +15,7 @@ import { canonicalizeUrl, coverage, domainOf, explicitYears, isVolatileClaim, no
  */
 export type RuleLabel = "matches" | "opposite" | "caution" | "differs" | "denial" | "conflict" | "disputed" | "no_coverage" | "opinion";
 
-export type Doc = { url: string; title: string; publisher: string; publishedAt: string | null; text: string; links: string[]; readable: boolean; note: string | null; isFactCheck: boolean };
+export type Doc = { url: string; title: string; publisher: string; publishedAt: string | null; text: string; links: string[]; readable: boolean; note: string | null; isFactCheck: boolean; isReference?: boolean };
 
 export type RuleEvidence = { publisher: string; title: string; url: string; publishedAt: string | null; passage: string; detail: string | null; originGroup: string | null };
 
@@ -26,6 +26,8 @@ export type RuleResult = {
   summary: string;
   independentOrigins: number;
   matches: RuleEvidence[];
+  /** Encyclopedia background (Wikipedia) that repeats the claim's details — context, never a match. */
+  background: RuleEvidence[];
   opposites: RuleEvidence[];
   cautions: RuleEvidence[];
   differs: RuleEvidence[];
@@ -72,6 +74,7 @@ export function decide(claim: string, docs: Doc[], referenceDate: string = new D
     summary,
     independentOrigins: 0,
     matches: [],
+    background: [],
     opposites: [],
     cautions: [],
     differs: [],
@@ -102,6 +105,7 @@ export function decide(claim: string, docs: Doc[], referenceDate: string = new D
   );
 
   const matches: RuleEvidence[] = [];
+  const background: RuleEvidence[] = [];
   const opposites: RuleEvidence[] = [];
   const cautions: RuleEvidence[] = [];
   const differs: RuleEvidence[] = [];
@@ -135,14 +139,14 @@ export function decide(claim: string, docs: Doc[], referenceDate: string = new D
     if (DENIAL.test(mine.join(" "))) denials.push(ev("mentions a denial or calls something a rumour"));
     else if (ratio >= 0.7 && !specifics.length && !outcomes.length && volatile && staleFor(d, focus)) cautions.push(ev(staleFor(d, focus)));
     else if (ratio >= 0.7 && !specifics.length && !outcomes.length && HEDGE.test(best)) cautions.push(ev("the report only speculates (“may”, “some think”…), it does not state it as fact"));
-    else if (ratio >= 0.7 && !specifics.length && !outcomes.length) matches.push(ev(null));
+    else if (ratio >= 0.7 && !specifics.length && !outcomes.length) (d.isReference ? background : matches).push(ev(d.isReference ? "encyclopedia background — not a news report" : null));
     else if (specifics.length || outcomes.length) differs.push(ev(`does not state: ${[...specifics, ...outcomes].slice(0, 4).join(", ")}`));
   });
 
   const origins = new Set(matches.map((m) => m.originGroup ?? `solo:${domainOf(m.url)}:${m.url}`)).size;
   const notes: string[] = ["Evidence-only mode: rules compare words, numbers and places — they do not read for meaning."];
   if (matches.length > origins) notes.push(`${matches.length - origins} cop${matches.length - origins === 1 ? "y" : "ies"} of the same story counted once.`);
-  const common = { matches, opposites, cautions, differs, denials, factChecks, independentOrigins: origins, notes };
+  const common = { matches, background, opposites, cautions, differs, denials, factChecks, independentOrigins: origins, notes };
 
   if (factChecks.length) return base("disputed", `${factChecks[0]!.publisher} published a fact-check on a similar claim. Read it to see whether it is the same claim.`, common);
   if (opposites.length && !matches.length) {
@@ -158,6 +162,7 @@ export function decide(claim: string, docs: Doc[], referenceDate: string = new D
   if (cautions.length) return base("caution", `Reports cover the same topic, but ${cautions[0]!.detail}. Rules cannot settle this — read the passage.`, common);
   if (denials.length) return base("denial", "Matching coverage mentions a denial or calls the claim a rumour.", common);
   if (differs.length) return base("differs", "Reports about a similar event were found, but key details differ from the claim.", common);
+  if (background.length) return base("caution", "Only encyclopedia background repeats these details; no news report was found. Background is not confirmation of a current event.", common);
   const unread = docs.filter((d) => !d.readable && !d.isFactCheck && uncoveredClaimTerms(claim, [d.title]).ratio >= 0.5);
   return base(
     "no_coverage",

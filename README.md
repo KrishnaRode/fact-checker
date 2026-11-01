@@ -41,8 +41,9 @@ There is no Docker, login or cloud account.
 
 Right-click any text on any page → **Fact-check**. The extension has two modes:
 - **AI · local:** used when this app is running.
-- **Evidence-only · no AI:** used otherwise. It runs fixed rules over public news, with
-  separate, more careful labels.
+- **Evidence-only · no AI:** used otherwise. It runs fixed rules over a 14-day local index of
+  55 news feeds (refreshed every 30 minutes in the background), plus GDELT (≈ 3 months,
+  worldwide) and Wikipedia background, with separate, more careful labels.
 
 ### Add the extension to Chrome (local install)
 

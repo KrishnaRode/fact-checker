@@ -2,8 +2,10 @@ import { appConfig } from "@/app.config";
 import type { InvestigationResult } from "@/lib/contracts";
 import { VERDICT_VIEW, overallView } from "@/lib/client/verdicts";
 import { SSEParser } from "@/lib/sse";
-import { runEvidenceOnly } from "./evidence";
-import type { RuleEvidence, RuleResult } from "./rules";
+import { runEvidenceOnly, type EvidenceRun } from "./evidence";
+import { getMeta } from "./index-store";
+import { ANY_SITE, canReadAnySite } from "./sources";
+import type { RuleEvidence } from "./rules";
 
 /**
  * Side panel controller. Two modes:
@@ -179,7 +181,7 @@ function renderAi(r: InvestigationResult, claim: string) {
   resultEl.hidden = false;
 }
 
-function renderRules(r: RuleResult & { detected: string; elapsedMs: number }, claim: string) {
+function renderRules(r: EvidenceRun, claim: string) {
   resultEl.replaceChildren();
   resultEl.appendChild(el("p", { cls: "banner", text: "Evidence-only mode · no AI. Rules compare names, numbers, places and outcomes in news reports; they do not read for meaning." }));
   resultEl.appendChild(header(r.tone, r.title, r.summary, null));
@@ -197,6 +199,7 @@ function renderRules(r: RuleResult & { detected: string; elapsedMs: number }, cl
     evidenceList("Same topic — read carefully", "unresolved", map(r.cautions)),
     evidenceList("Reports mentioning a denial", "unresolved", map(r.denials)),
     evidenceList("Reports that differ on details", "unresolved", map(r.differs)),
+    evidenceList("Encyclopedia background (not news)", "neutral", map(r.background)),
   ])
     if (node) resultEl.appendChild(node);
   if (r.unreadable.length) {
@@ -205,7 +208,7 @@ function renderRules(r: RuleResult & { detected: string; elapsedMs: number }, cl
     resultEl.append(el("h3", { text: "Possibly related, not readable" }), ul);
   }
   const notes = el("ul", { cls: "notes" });
-  for (const n of [`Keywords: ${r.detected} · ${(r.elapsedMs / 1000).toFixed(1)} s`, ...r.notes]) notes.appendChild(el("li", { text: n }));
+  for (const n of [`Keywords: ${r.detected} · ${(r.elapsedMs / 1000).toFixed(1)} s`, r.coverageNote, ...r.notes]) notes.appendChild(el("li", { text: n }));
   const actions = el("div", { cls: "actions" });
   if (aiReady) actions.appendChild(openInAppButton(claim));
   else actions.appendChild(el("p", { cls: "small faint", text: "For an AI assessment with the local model, start the Fact Checker app (./run.sh) and re-check the connection." }));
@@ -294,8 +297,33 @@ claimEl.addEventListener("keydown", (e) => {
   }
 });
 stopEl.addEventListener("click", () => running?.abort());
-modeEl.addEventListener("click", () => settings.showModal());
+modeEl.addEventListener("click", () => {
+  settings.showModal();
+  void showIndexStatus();
+});
 $("recheck").addEventListener("click", () => void detectMode());
+
+async function showIndexStatus() {
+  const m = await getMeta().catch(() => null);
+  const ago = m?.lastRefresh ? Math.round((Date.now() - m.lastRefresh) / 60_000) : null;
+  $("index-status").textContent = !m?.lastRefresh
+    ? m?.running
+      ? "Building the index for the first time…"
+      : "Not built yet — it builds automatically, or press Update now."
+    : `${m.count.toLocaleString("en-IN")} headlines from the last 14 days · ${m.feedsOk}/${m.feedsTotal} feeds answered · updated ${ago === 0 ? "just now" : `${ago} min ago`}${m.running ? " · updating…" : ""}. Refreshes every 30 minutes while Chrome is open.`;
+  $<HTMLInputElement>("any-site").checked = await canReadAnySite();
+}
+$("index-update").addEventListener("click", async () => {
+  $("index-status").textContent = "Updating from 55 feeds…";
+  await chrome.runtime.sendMessage({ type: "refresh-index" }).catch(() => null);
+  await showIndexStatus();
+});
+$<HTMLInputElement>("any-site").addEventListener("change", async (e) => {
+  const box = e.target as HTMLInputElement;
+  // Must run inside the click: Chrome only shows the permission prompt for a user gesture.
+  if (box.checked) box.checked = await chrome.permissions.request(ANY_SITE).catch(() => false);
+  else await chrome.permissions.remove(ANY_SITE).catch(() => false);
+});
 settings.addEventListener("close", async () => {
   appUrl = (appUrlEl.value.trim() || DEFAULT_APP).replace(/\/+$/, "");
   forceRules = forceRulesEl.checked;
