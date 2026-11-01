@@ -17,6 +17,11 @@ describe("deterministic opposite detection", () => {
     expect(findOpposites(claim, ["South Africa dismantle Australia to clinch series and strengthen WTC defence."])[0]?.claimWord).toBe("Australia beat South Africa");
     expect(findOpposites(claim, ["Australia lose their No.1 ICC, WTC positions after 2-1 defeat against South Africa."])[0]?.kind).toBe("antonym");
     expect(findOpposites(claim, ["Australia beat South Africa 2-1 in a thrilling decider."])).toEqual([]);
+    // The first team named is the subject: South Africa did not lose here.
+    expect(findOpposites("South Africa beat Australia to win the Test series 2-1.", ["Australia suffered a shock collapse on the final day of their South Africa tour as they lost the Newlands Test by 176 runs."])).toEqual([]);
+    // Loose "A … lose" phrasing is not a result.
+    expect(findOpposites("South Africa beat Australia to win the Test series 2-1.", ["South Africa had to lose only two wickets to chase it down."])).toEqual([]);
+    expect(findOpposites("South Africa beat Australia to win the Test series 2-1.", ["South Africa lost to Australia in the final Test."])[0]?.kind).toBe("antonym");
   });
   it("catches 'without X' about the claim's own key word", () => {
     expect(findOpposites("UK weather alert: 10 days of non-stop rain coming!", ["UK could see 10 days without rain after 'wettest week in two years'."])[0]?.reportWords).toMatch(/without rain/);

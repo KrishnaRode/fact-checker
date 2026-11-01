@@ -15,7 +15,9 @@ import { salientTerms, terms } from "@/lib/text";
 
 export type Opposite = { claimWord: string; reportWords: string; sentence: string; kind: "negated" | "antonym" | "price" };
 
-type Pair = { claim: RegExp; opposite: RegExp; label: string };
+/** subjectBound: the opposite word must follow the claim's own subject ("India … lost"), so
+ *  "Australia lose" is not read as the opposite of "South Africa beat Australia". */
+type Pair = { claim: RegExp; opposite: RegExp; label: string; subjectBound?: boolean };
 
 const PAIRS: Pair[] = [
   { claim: /\bpermanent(?:ly)?\b/i, opposite: /\btemporar(?:y|ily)\b|\bfor (?:a|one|two|\d+) (?:day|week|month)s?\b|\bwill reopen\b|\breopens? on\b/i, label: "permanently" },
@@ -25,8 +27,9 @@ const PAIRS: Pair[] = [
   { claim: /\b(?:dangerous|unsafe|toxic|contaminated|high (?:levels?|concentrations?)|excessive|alarming)\b/i, opposite: /\b(?:below (?:the )?(?:\w+ )?(?:detection |safety |permissible |safe )?limits?|within (?:the )?(?:\w+ )?(?:safe|safety|permissible) limits?|not detected|undetectable|safe to (?:drink|use|eat)|no (?:trace|traces) of)\b/i, label: "dangerous / high" },
   { claim: /\b(?:rose|rise|rises|risen|increased?|surged?|hiked?|up by)\b/i, opposite: /\b(?:fell|fall|falls|fallen|decreased?|declined?|dropped|drop|down by|cut)\b/i, label: "rose" },
   { claim: /\b(?:fell|fall|falls|fallen|decreased?|declined?|dropped|down by)\b/i, opposite: /\b(?:rose|rise|rises|risen|increased?|surged?|gained|up by)\b/i, label: "fell" },
-  { claim: /\b(?:won|wins|win|victory|beat|beats|thrashed|crushed)\b/i, opposite: /\b(?:lost|loses|lose|defeated|defeat|went down)\b/i, label: "won" },
-  { claim: /\b(?:lost|loses|defeated)\b/i, opposite: /\b(?:won|wins|victory)\b/i, label: "lost" },
+  // Results need result phrasing: a bare "lose" ("had to lose only two wickets") is not a loss.
+  { claim: /\b(?:won|wins|win|victory|beat|beats|thrashed|crushed)\b/i, opposite: /\b(?:lost|loses|lose|went down)\s+(?:to|against|the\s+(?:\w+\s+)?(?:series|match|test|final|game|tie|decider))\b|\bdefeat(?:ed)?\s+(?:to|against|by)\b/i, label: "won", subjectBound: true },
+  { claim: /\b(?:lost|loses|defeated)\b/i, opposite: /\b(?:won|wins|victory|advanced|beat|beats|reached the final)\b|\bin (?:the )?(?:\w+ )?final\b/i, label: "lost", subjectBound: true },
   { claim: /\b(?:convicted|guilty)\b/i, opposite: /\b(?:acquitted|not guilty|cleared of)\b/i, label: "convicted" },
   { claim: /\b(?:acquitted|cleared)\b/i, opposite: /\b(?:convicted|found guilty|sentenced|interim bail|bail)\b/i, label: "acquitted" },
   { claim: /\b(?:approved|passed|cleared)\b/i, opposite: /\b(?:rejected|struck down|withdrawn|deferred)\b/i, label: "approved" },
@@ -51,10 +54,29 @@ function winnerFlip(claim: string, focus: string[]): Opposite | null {
   const b = salientTerms(m[2]!)[0];
   if (!a || !b) return null;
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const flipped = new RegExp(`\\b${esc(b)}\\b[^.]{0,60}\\b(?:${WIN_VERB})\\b[^.]{0,40}\\b${esc(a)}\\b`, "i");
-  const aLost = new RegExp(`\\b${esc(a)}\\b[^.]{0,40}\\b(?:lose|loses|lost|went down|suffered[^.]{0,20}defeat)\\b`, "i");
-  const hit = focus.find((s) => flipped.test(s) || aLost.test(s));
+  const flipped = new RegExp(`\\b${esc(b)}\\b(?:[^.]|\\.(?=\\d)){0,60}\\b(?:${WIN_VERB})\\b(?:[^.]|\\.(?=\\d)){0,40}\\b${esc(a)}\\b`, "i");
+  // Only an explicit result: "A lost to B" / "A lost the series" / "A … defeat against B" —
+  // not any "A … lose" phrase.
+  const aLost = new RegExp(`\\b${esc(a)}\\b(?:[^.]|\\.(?=\\d)){0,25}\\b(?:lost|loses|lose|went down)\\s+(?:to|against)\\s+(?:(?:[^.]|\\.(?=\\d)){0,15}\\b)?${esc(b)}\\b|\\b${esc(a)}\\b(?:[^.]|\\.(?=\\d)){0,25}\\b(?:lost|lose|loses)\\s+(?:the\\s+)?(?:\\w+\\s+)?(?:series|match|test|final|game|tie|decider)\\b|\\b${esc(a)}\\b(?:[^.]|\\.(?=\\d)){0,60}\\bdefeat\\s+(?:against|to|by)\\s+${esc(b)}\\b`, "i");
+  // "A lost …" only counts when A is the first team named (the subject): in "Australia … their
+  // South Africa tour as they lost", South Africa is not the one that lost.
+  const hit = focus.find((s) => flipped.test(s) || (aLost.test(s) && firstNamed(s, [a, b]) === a));
   return hit ? { claimWord: `${a} beat ${b}`, reportWords: (hit.match(flipped) ?? hit.match(aLost))![0], sentence: hit, kind: "antonym" } : null;
+}
+
+/** Which of the names appears first in the sentence (case-insensitive), or null. */
+function firstNamed(sentence: string, names: string[]): string | null {
+  const lower = sentence.toLowerCase();
+  let best: string | null = null;
+  let at = Infinity;
+  for (const n of names) {
+    const i = lower.indexOf(n.toLowerCase());
+    if (i >= 0 && i < at) {
+      at = i;
+      best = n;
+    }
+  }
+  return best;
 }
 
 /** "without rain" / "no rain" in the report about one of the claim's own key words. */
@@ -96,7 +118,11 @@ export function findOpposites(claim: string, focus: string[]): Opposite[] {
       continue;
     }
     const claimWordUsed = focus.some((s) => p.claim.test(s) && !negatedAt(s, p.claim));
-    const opposite = focus.find((s) => p.opposite.test(s));
+    const subject = p.subjectBound ? salientTerms(claim)[0] : undefined;
+    if (p.subjectBound && !subject) continue;
+    const near = subject ? new RegExp(`\\b${subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b(?:[^.]|\\.(?=\\d)){0,70}(?:${p.opposite.source})`, "i") : null;
+    const entities = salientTerms(claim);
+    const opposite = focus.find((s) => (near ? near.test(s) && firstNamed(s, entities) === subject : p.opposite.test(s)));
     if (!claimWordUsed && opposite) out.push({ claimWord: p.label, reportWords: opposite.match(p.opposite)![0], sentence: opposite, kind: "antonym" });
   }
   const flip = winnerFlip(claim, focus);

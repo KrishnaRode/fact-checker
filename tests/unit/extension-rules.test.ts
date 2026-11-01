@@ -85,3 +85,11 @@ describe("rules detect opposites (regression: demo corpus)", () => {
     expect(lead.opposites[0]!.detail).toMatch(/below/);
   });
 });
+
+describe("hedged claims", () => {
+  it("a claim about a suspicion matches hedged reporting", () => {
+    const text = "North Korean hackers are suspected of the Binance theft, and investigators say they may have stolen 6.3 billion dollars in 20 minutes. North Korean hackers stole the funds from Binance, the exchange said.";
+    const r = decide("North Korean hackers are suspected of stealing 6.3 billion dollars from Binance.", [doc("Mint", text), doc("BBC News", text.replace("the exchange said", "according to analysts"), { url: "https://bbc.example/b" })]);
+    expect(r.label).toBe("matches");
+  });
+});

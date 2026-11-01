@@ -100,7 +100,7 @@ export const cachePolicy = {
   /** Bump when prompts, schemas or the evidence pipeline change meaningfully. */
   promptVersion: "assess-v5",
   schemaVersion: "result-v2",
-  evidenceVersion: "evidence-v15",
+  evidenceVersion: "evidence-v16",
 } as const;
 
 /**

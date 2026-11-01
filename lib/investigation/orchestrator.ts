@@ -42,7 +42,10 @@ export type OrchestratorDeps = {
 
 /** Settle no later than the signal: a step that ignores cancellation cannot hold the run. */
 export function raceAbort<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
+  if (signal.aborted) {
+    p.catch(() => undefined); // the losing promise may still reject later; never leave it unhandled
+    return Promise.reject(new DOMException("Aborted", "AbortError"));
+  }
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => reject(new DOMException("Aborted", "AbortError"));
     signal.addEventListener("abort", onAbort, { once: true });

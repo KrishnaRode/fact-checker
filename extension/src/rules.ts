@@ -40,6 +40,8 @@ export type RuleResult = {
 const DEBUNK = /\b(fake|false|falsely|misleading|misreport|hoax|debunk(?:ed)?|no,|not true|morphed|edited|old (?:video|image|photo)|viral claim|fact[- ]check|baseless|incorrect|wrongly)\b/i;
 // "allegedly"/"reportedly" are routine in crime reporting of established facts, so not hedges here.
 const HEDGE = /\b(?:may|might|could|possibly|perhaps|rumou?red|speculat\w*|unconfirmed|some (?:think|say|believe|claim)|(?:are|were|is) saying|it is (?:said|believed))\b/i;
+/** A claim that is itself about a suspicion or possibility matches hedged reporting. */
+const CLAIM_HEDGE = /\b(?:suspected|suspect|alleged(?:ly)?|reportedly|likely|may|might|could|possibly|believed)\b/i;
 const DENIAL = /\b(denied|denies|deny|refuted|refutes|rumou?rs?|fake news|not true|baseless|clarified that .{0,40}\bnot\b|dismissed (?:the )?(?:claim|reports?))\b/i;
 
 const LABELS: Record<RuleLabel, { title: string; tone: RuleResult["tone"] }> = {
@@ -138,7 +140,7 @@ export function decide(claim: string, docs: Doc[], referenceDate: string = new D
     }
     if (DENIAL.test(mine.join(" "))) denials.push(ev("mentions a denial or calls something a rumour"));
     else if (ratio >= 0.7 && !specifics.length && !outcomes.length && volatile && staleFor(d, focus)) cautions.push(ev(staleFor(d, focus)));
-    else if (ratio >= 0.7 && !specifics.length && !outcomes.length && HEDGE.test(best)) cautions.push(ev("the report only speculates (“may”, “some think”…), it does not state it as fact"));
+    else if (ratio >= 0.7 && !specifics.length && !outcomes.length && HEDGE.test(best) && !CLAIM_HEDGE.test(claim)) cautions.push(ev("the report only speculates (“may”, “some think”…), it does not state it as fact"));
     else if (ratio >= 0.7 && !specifics.length && !outcomes.length) (d.isReference ? background : matches).push(ev(d.isReference ? "encyclopedia background — not a news report" : null));
     else if (specifics.length || outcomes.length) differs.push(ev(`does not state: ${[...specifics, ...outcomes].slice(0, 4).join(", ")}`));
   });
