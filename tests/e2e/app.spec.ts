@@ -152,10 +152,10 @@ test("How it works page: pipeline, AI role and a live list of every source", asy
   await page.goto("/");
   await page.getByRole("link", { name: "How it works", exact: true }).click();
   await expect(page.getByRole("heading", { name: "How it works" })).toBeVisible();
-  await expect(page.getByText("What the local AI does")).toBeVisible();
-  await expect(page.getByText("What the AI does not do")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What the local AI does" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What the AI does not do" })).toBeVisible();
   await expect(page.getByText(/55 feeds from 13 publishers/)).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText("Hindustan Times").first()).toBeVisible();
-  await expect(page.getByText("Reddit")).toBeVisible();
+  await expect(page.getByText("Reddit", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
